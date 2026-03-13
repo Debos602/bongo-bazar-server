@@ -1654,6 +1654,153 @@
           ]
         }
       ]
+    },
+    {
+      "name": "Categories",
+      "item": [
+        {
+          "name": "Get All Categories",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/category?page=1&limit=10&sortBy=id&sortOrder=asc",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "category"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "sortBy",
+                  "value": "id"
+                },
+                {
+                  "key": "sortOrder",
+                  "value": "asc"
+                }
+              ]
+            },
+            "description": "Get paginated list of all categories\n\n🔐 REQUIRES AUTHENTICATION: Vendor, Admin, or User\n\n📋 QUERY PARAMETERS:\n- page: Page number (default: 1)\n- limit: Items per page (default: 10)\n- sortBy: Field to sort by (default: 'id')\n- sortOrder: 'asc' or 'desc' (default: 'asc')\n\n✅ SUCCESS RESPONSE (200):\n{\n  \"statusCode\": 200,\n  \"success\": true,\n  \"message\": \"Categories retrieved successfully!\",\n  \"meta\": {\n    \"page\": 1,\n    \"limit\": 10,\n    \"total\": 5\n  },\n  \"data\": [\n    {\n      \"id\": 1,\n      \"name\": \"Electronics\",\n      \"slug\": \"electronics\",\n      \"products\": [...]\n    }\n  ]\n}"
+          }
+        },
+        {
+          "name": "Get Category by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/category/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "category", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Get detailed category information with associated products\n\n🔐 REQUIRES AUTHENTICATION: Vendor, Admin, or User\n\n📋 PATH PARAMETERS:\n- id: Category ID (required)\n\n✅ SUCCESS RESPONSE (200):\n{\n  \"statusCode\": 200,\n  \"success\": true,\n  \"message\": \"Category retrieved successfully!\",\n  \"data\": {\n    \"id\": 1,\n    \"name\": \"Electronics\",\n    \"slug\": \"electronics\",\n    \"products\": [\n      {\n        \"product\": {\n          \"id\": 10,\n          \"name\": \"Laptop\",\n          \"price\": 999.99,\n          \"image\": \"url...\",\n          \"description\": \"...\"\n        }\n      }\n    ]\n  }\n}\n\n❌ ERROR RESPONSES:\n- 404: Category not found"
+          }
+        },
+        {
+          "name": "Create Category",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Electronics\",\n  \"slug\": \"electronics\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/category",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "category"]
+            },
+            "description": "Create a new product category\n\n🔐 REQUIRES AUTHENTICATION: Admin only\n\n📋 REQUEST BODY:\n- name: String (required) - Category name (max 255 characters)\n- slug: String (required) - URL-friendly identifier, must be unique (max 255 characters)\n\n✅ SUCCESS RESPONSE (201):\n{\n  \"statusCode\": 201,\n  \"success\": true,\n  \"message\": \"Category created successfully!\",\n  \"data\": {\n    \"id\": 1,\n    \"name\": \"Electronics\",\n    \"slug\": \"electronics\"\n  }\n}\n\n⚠️ VALIDATION RULES:\n- name: Required, string, max 255 characters\n- slug: Required, string, max 255 characters, must be unique\n\n❌ ERROR RESPONSES:\n- 400: Missing required fields or slug already exists\n- 401: Unauthorized - authentication required\n- 403: Forbidden - admin access required"
+          }
+        },
+        {
+          "name": "Update Category",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Electronics\",\n  \"slug\": \"updated-electronics\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/category/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "category", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Update category information\n\n🔐 REQUIRES AUTHENTICATION: Admin only\n\n📋 PATH PARAMETERS:\n- id: Category ID (required)\n\n📋 REQUEST BODY (all optional):\n- name: String - Updated category name (max 255 characters)\n- slug: String - Updated slug (must be unique if provided)\n\n✅ SUCCESS RESPONSE (200):\n{\n  \"statusCode\": 200,\n  \"success\": true,\n  \"message\": \"Category updated successfully!\",\n  \"data\": {\n    \"id\": 1,\n    \"name\": \"Updated Electronics\",\n    \"slug\": \"updated-electronics\"\n  }\n}\n\n❌ ERROR RESPONSES:\n- 404: Category not found\n- 400: Slug already exists\n- 401: Unauthorized\n- 403: Forbidden - admin access required"
+          }
+        },
+        {
+          "name": "Delete Category",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/category/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "category", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Delete a product category\n\n🔐 REQUIRES AUTHENTICATION: Admin only\n\n📋 PATH PARAMETERS:\n- id: Category ID (required)\n\n⚠️ RESTRICTIONS:\n- Cannot delete categories that have associated products\n- Check products linked to the category before deletion\n\n✅ SUCCESS RESPONSE (200):\n{\n  \"statusCode\": 200,\n  \"success\": true,\n  \"message\": \"Category deleted successfully!\",\n  \"data\": {\n    \"id\": 1,\n    \"name\": \"Electronics\",\n    \"slug\": \"electronics\"\n  }\n}\n\n❌ ERROR RESPONSES:\n- 404: Category not found\n- 400: Cannot delete category with associated products\n- 401: Unauthorized\n- 403: Forbidden - admin access required"
+          }
+        }
+      ]
     }
   ],
   "variable": [
