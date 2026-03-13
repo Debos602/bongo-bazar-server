@@ -1,0 +1,256 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id         Int        @id @default(autoincrement())
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  email      String     @unique
+  name       String
+  password   String
+  phone      String
+  picture    String?
+  needPasswordChange Boolean @default(false)
+
+  isVerified Boolean    @default(false)
+  status     UserStatus @default(ACTIVE)
+  role       Role       @default(USER)
+
+  posts      Post[]
+  reviews    Review[]
+  carts      Cart[]
+  orders     Order[]
+  wishlist   Wishlist[]
+  addresses  Address[]
+  vendor     Vendor?    // যদি ইউজার ভেন্ডার হয়, Vendor info থাকবে
+}
+
+model Vendor {
+  id        Int       @id @default(autoincrement())
+  userId    Int       @unique
+  user      User      @relation(fields: [userId], references: [id])
+  shopName  String
+  products  Product[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @default(now()) @updatedAt
+}
+
+model Product {
+  id            Int      @id @default(autoincrement())
+
+  name          String
+  slug          String   @unique
+  description   String?
+
+  price         Float
+  oldPrice      Float?
+  discount      Int?
+
+  image         String
+  images        String[]
+
+  stock         Int      @default(0)
+  sku           String?
+
+  rating        Float    @default(0)
+  reviewCount   Int      @default(0)
+
+  categories    ProductCategory[]
+
+  isFeatured    Boolean  @default(false)
+  isPublished   Boolean  @default(true)
+
+  reviews       Review[]
+  carts         Cart[]
+  orderItems    OrderItem[]
+  wishlist      Wishlist[]
+
+  vendorId      Int
+  vendor        Vendor   @relation(fields: [vendorId], references: [id])
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Category {
+  id        Int       @id @default(autoincrement())
+  name      String
+  slug      String    @unique
+
+  products  ProductCategory[]
+}
+
+model ProductCategory {
+  productId  Int
+  categoryId Int
+
+  product    Product  @relation(fields: [productId], references: [id])
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  @@id([productId, categoryId])
+}
+
+model Review {
+  id        Int      @id @default(autoincrement())
+  rating    Int
+  comment   String?
+
+  userId    Int
+  productId Int
+
+  user      User     @relation(fields: [userId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+model Cart {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  productId Int
+  quantity  Int      @default(1)
+
+  user      User     @relation(fields: [userId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+model Wishlist {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  productId Int
+
+  user      User     @relation(fields: [userId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+model Address {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+
+  fullName  String
+  phone     String
+  city      String
+  area      String
+  address   String
+  postalCode String?
+
+  user      User     @relation(fields: [userId], references: [id])
+  orders    Order[]
+}
+
+model Order {
+  id          Int         @id @default(autoincrement())
+  userId      Int
+  addressId   Int
+
+  total       Float
+  status      OrderStatus @default(PENDING)
+
+  payment     Payment?
+  items       OrderItem[]
+
+  user        User     @relation(fields: [userId], references: [id])
+  address     Address  @relation(fields: [addressId], references: [id])
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+}
+
+model OrderItem {
+  id        Int     @id @default(autoincrement())
+
+  orderId   Int
+  productId Int
+
+  quantity  Int
+  price     Float
+
+  order     Order   @relation(fields: [orderId], references: [id])
+  product   Product @relation(fields: [productId], references: [id])
+}
+
+model Payment {
+  id          Int            @id @default(autoincrement())
+  orderId     Int            @unique
+  amount      Float
+  method      PaymentMethod
+  status      PaymentStatus  @default(PENDING)
+  transactionId String?
+
+  order       Order          @relation(fields: [orderId], references: [id])
+
+  createdAt   DateTime       @default(now())
+}
+
+model Coupon {
+  id          Int      @id @default(autoincrement())
+  code        String   @unique
+  discount    Int
+  expiresAt   DateTime?
+  isActive    Boolean  @default(true)
+
+  createdAt   DateTime @default(now())
+}
+
+model Post {
+  id         Int      @id @default(autoincrement())
+  title      String
+  content    String
+  thumbnail  String?
+  isFeatured Boolean  @default(false)
+  tags       String[]
+  views      Int      @default(0)
+
+  authorId   Int
+  author     User     @relation(fields: [authorId], references: [id])
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  VENDOR
+  USER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  BLOCK
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH_ON_DELIVERY
+  STRIPE
+  SSL_COMMERZ
+  BKASH
+  NAGAD
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
