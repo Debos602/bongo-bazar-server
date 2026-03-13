@@ -10,10 +10,40 @@ import { VendorService } from '../vendor/vendor.service';
 // Single, consistent product service with intuitive method names.
 export const productService = {
     // Create product (vendorId optional for admins)
-    async create(data: Prisma.ProductCreateInput, vendorId?: number) {
-        const payload = { ...data } as any;
+    async create(data: any, vendorId?: number) {
+        const payload = { ...data };
+
         if (vendorId) payload.vendorId = vendorId;
-        return prisma.product.create({ data: payload });
+
+        const { categories: rawCategories, ...productData } = payload;
+
+        // Parse categories if it's a JSON string (e.g. from form-data)
+        let categories: number[] | undefined;
+        if (typeof rawCategories === 'string') {
+            try {
+                categories = JSON.parse(rawCategories);
+            } catch {
+                categories = [];
+            }
+        } else {
+            categories = rawCategories;
+        }
+
+        return prisma.product.create({
+            data: {
+                ...productData,
+                categories: categories?.length
+                    ? {
+                        create: categories.map((categoryId: number) => ({
+                            category: { connect: { id: categoryId } }
+                        }))
+                    }
+                    : undefined
+            },
+            include: {
+                categories: { include: { category: true } }
+            }
+        });
     },
 
     // Update with basic authorization check (caller must supply their own id/role)
