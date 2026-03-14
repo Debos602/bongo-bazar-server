@@ -1,18 +1,24 @@
-import { Category, Prisma } from "@prisma/client";
+import { Category } from "@prisma/client";
 import ApiError from "../../errors/ApiError";
 import httpStatus from "http-status";
 import prisma from "../../../shared/prisma";
 import { IPaginationOptions } from "../../interfaces/pagination";
 import { paginationHelper } from "../../../helpers/paginationHelper";
 
-const createCategory = async (payload: { name: string; slug: string; }): Promise<Category> => {
+const createCategory = async (payload: {
+    name: string;
+    slug: string;
+}): Promise<Category> => {
     // Check if slug already exists
     const existingCategory = await prisma.category.findUnique({
         where: { slug: payload.slug }
     });
 
     if (existingCategory) {
-        throw new ApiError(httpStatus.BAD_REQUEST, "Category slug already exists");
+        throw new ApiError(
+            httpStatus.BAD_REQUEST,
+            "Category slug already exists"
+        );
     }
 
     const result = await prisma.category.create({
@@ -26,14 +32,15 @@ const createCategory = async (payload: { name: string; slug: string; }): Promise
 };
 
 const getAllCategories = async (options: IPaginationOptions) => {
-    const { page, limit, skip } = paginationHelper.calculatePagination(options);
+    const { page, limit, skip } =
+        paginationHelper.calculatePagination(options);
 
     const result = await prisma.category.findMany({
         skip,
         take: limit,
         orderBy: options.sortBy && options.sortOrder
             ? { [options.sortBy]: options.sortOrder }
-            : { id: 'asc' },
+            : { id: "asc" },
         include: {
             products: {
                 select: {
@@ -81,6 +88,31 @@ const getCategoryById = async (id: number): Promise<Category | null> => {
     return result;
 };
 
+const getCategoryBySlug = async (slug: string): Promise<Category | null> => {
+    const result = await prisma.category.findUnique({
+        where: { slug },
+        include: {
+            products: {
+                include: {
+                    product: {
+                        select: {
+                            id: true,
+                            name: true,
+                            price: true,
+                            image: true,
+                            description: true,
+                            stock: true,
+                            rating: true
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    return result;
+};
+
 const updateCategory = async (
     id: number,
     payload: Partial<{ name: string; slug: string; }>
@@ -101,7 +133,10 @@ const updateCategory = async (
         });
 
         if (slugExists) {
-            throw new ApiError(httpStatus.BAD_REQUEST, "Category slug already exists");
+            throw new ApiError(
+                httpStatus.BAD_REQUEST,
+                "Category slug already exists"
+            );
         }
     }
 
@@ -146,6 +181,7 @@ export const categoryService = {
     createCategory,
     getAllCategories,
     getCategoryById,
+    getCategoryBySlug,
     updateCategory,
     deleteCategory
 };

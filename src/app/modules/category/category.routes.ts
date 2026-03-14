@@ -13,6 +13,12 @@ router.get(
     auth(Role.ADMIN, Role.VENDOR, Role.USER),
     categoryController.getAllCategories
 );
+// get category by slug - accessible to VENDOR and ADMIN
+router.get(
+    '/slug/:slug',
+    auth(Role.ADMIN, Role.VENDOR, Role.USER),
+    categoryController.getCategoryBySlug
+);
 
 // Get category by id - accessible to VENDOR and ADMIN
 router.get(
@@ -20,6 +26,8 @@ router.get(
     auth(Role.ADMIN, Role.VENDOR, Role.USER),
     categoryController.getCategoryById
 );
+
+
 
 // Create category - only ADMIN
 router.post(

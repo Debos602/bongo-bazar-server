@@ -1719,6 +1719,30 @@
           }
         },
         {
+          "name": "Get Category by Slug",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/category/slug/electronics",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "category", "slug", "electronics"],
+              "variable": [
+                {
+                  "key": "slug",
+                  "value": "electronics"
+                }
+              ]
+            },
+            "description": "Get category details by slug (URL-friendly identifier)\n\n🔐 REQUIRES AUTHENTICATION: Vendor, Admin, or User\n\n📋 PATH PARAMETERS:\n- slug: Category slug (required) - URL-friendly identifier\n\n📌 EXAMPLE:\n- GET /api/v1/category/slug/electronics\n- GET /api/v1/category/slug/fashion\n- GET /api/v1/category/slug/home-appliances\n\n✅ SUCCESS RESPONSE (200):\n{\n  \"statusCode\": 200,\n  \"success\": true,\n  \"message\": \"Category retrieved successfully!\",\n  \"data\": {\n    \"id\": 1,\n    \"name\": \"Electronics\",\n    \"slug\": \"electronics\",\n    \"products\": [\n      {\n        \"product\": {\n          \"id\": 10,\n          \"name\": \"Laptop\",\n          \"price\": 999.99,\n          \"image\": \"url...\",\n          \"description\": \"...\",\n          \"stock\": 50,\n          \"rating\": 4.5\n        }\n      }\n    ]\n  }\n}\n\n❌ ERROR RESPONSES:\n- 404: Category not found\n\n💡 USE CASE:\n- Frontend URL routing (e.g., /category/electronics)\n- SEO-friendly category pages\n- Share category links with readable slugs"
+          }
+        },
+        {
           "name": "Create Category",
           "request": {
             "method": "POST",

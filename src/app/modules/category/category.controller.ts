@@ -49,6 +49,27 @@ const getCategoryById = catchAsync(async (req: Request, res: Response) => {
     });
 });
 
+const getCategoryBySlug = catchAsync(async (req: Request, res: Response) => {
+    const { slug } = req.params;
+    const result = await categoryService.getCategoryBySlug(slug);
+
+    if (!result) {
+        return sendResponse(res, {
+            statusCode: httpStatus.NOT_FOUND,
+            success: false,
+            message: "Category not found!",
+            data: null
+        });
+    }
+
+    sendResponse(res, {
+        statusCode: httpStatus.OK,
+        success: true,
+        message: "Category retrieved successfully!",
+        data: result
+    });
+});
+
 const updateCategory = catchAsync(async (req: Request, res: Response) => {
     const { id } = req.params;
     const result = await categoryService.updateCategory(Number(id), req.body);
@@ -77,6 +98,7 @@ export const categoryController = {
     createCategory,
     getAllCategories,
     getCategoryById,
+    getCategoryBySlug,
     updateCategory,
     deleteCategory
 };
