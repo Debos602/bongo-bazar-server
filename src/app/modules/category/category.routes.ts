@@ -10,13 +10,12 @@ const router = express.Router();
 // Get all categories - accessible to VENDOR and ADMIN
 router.get(
     '/',
-    auth(Role.ADMIN, Role.VENDOR, Role.USER),
     categoryController.getAllCategories
 );
 // get category by slug - accessible to VENDOR and ADMIN
 router.get(
     '/slug/:slug',
-    auth(Role.ADMIN, Role.VENDOR, Role.USER),
+    // auth(Role.ADMIN, Role.VENDOR, Role.USER),
     categoryController.getCategoryBySlug
 );
 
