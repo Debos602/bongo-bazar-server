@@ -5,16 +5,19 @@ import sendResponse from "../../../shared/sendResponse";
 import httpStatus from 'http-status';
 
 
+
 const create = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { productId, quantity } = req.body;
-        const userId = req?.user?.id; // or however you get userId (JWT, session, etc.)
+        const userId = req.user?.id;
 
-        const cart = await CartService.create({
-            product: { connect: { id: productId } },
-            quantity,
-            user: { connect: { id: userId } }
-        });
+        // ✅ userId না থাকলে আগেই error দাও
+        if (!userId) {
+            res.status(401).json({ message: "Unauthorized" });
+            return;
+        }
+
+        const cart = await CartService.create({ productId, quantity, userId });
 
         sendResponse(res, {
             statusCode: httpStatus.CREATED,
@@ -27,12 +30,21 @@ const create = async (req: Request, res: Response, next: NextFunction) => {
     }
 };
 
-const list = catchAsync(async (_req: Request, res: Response) => {
-    const items = await CartService.list();
+const list = catchAsync(async (req: Request, res: Response) => {
+    const userId = Number(req.user?.id); // ✅ JWT থেকে userId নিন
 
-    res.json({
+    if (!userId) {
+        res.status(401).json({ success: false, message: "Unauthorized" });
+        return;
+    }
+
+    const items = await CartService.list(userId); // ✅ userId পাঠান
+
+    sendResponse(res, {
+        statusCode: httpStatus.OK,
         success: true,
-        data: items,
+        message: "cart retrieved",
+        data: items
     });
 });
 
@@ -84,7 +96,7 @@ const getCartCount = async (req: Request, res: Response): Promise<void> => {
         sendResponse(res, {
             statusCode: httpStatus.OK,
             success: true,
-            message: 'Cart cout retrieved successfully',
+            message: 'Cart count retrieved successfully',
             data: count
         });
     } catch (error) {

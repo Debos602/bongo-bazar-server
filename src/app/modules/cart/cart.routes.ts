@@ -7,7 +7,11 @@ const router = express.Router();
 
 router.post('/', authMiddleware.authenticate,
     authMiddleware.authorize(Role.USER), CartController.create);
-router.get('/', CartController.list);
+router.get('/',
+    authMiddleware.authenticate,
+    authMiddleware.authorize(Role.USER),
+    CartController.list  // ✅ এখন userId দিয়ে filter হবে
+);
 router.get("/count", authMiddleware.authenticate,
     authMiddleware.authorize(Role.USER), CartController.getCartCount);
 router.get('/:id', CartController.getOne);
