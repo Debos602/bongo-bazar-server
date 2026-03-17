@@ -28,8 +28,20 @@ export const CartService = {
     update: async (id: number, data: Prisma.CartUpdateInput) => prisma.cart.update({ where: { id }, data }),
     remove: async (id: number) => prisma.cart.delete({ where: { id } }),
     getCartCount: async (userId: number) => {
-        return prisma.cart.count({
-            where: { userId }
-        });
-    }
+        const [totalItems, totalQuantityResult] = await prisma.$transaction([
+            // ✅ unique product count → cart icon এ
+            prisma.cart.count({ where: { userId } }),
+
+            // ✅ মোট quantity → "SELECT ALL (8 ITEM(S))" এ
+            prisma.cart.aggregate({
+                where: { userId },
+                _sum: { quantity: true },
+            }),
+        ]);
+
+        return {
+            totalItems,
+            totalQuantity: totalQuantityResult._sum.quantity ?? 0,
+        };
+    },
 };
