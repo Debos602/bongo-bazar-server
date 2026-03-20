@@ -37,7 +37,7 @@ router.put(
 // Protected: admin only delete
 router.delete('/:id', authMiddleware.authenticate, authMiddleware.authorize(Role.ADMIN, Role.SUPER_ADMIN), productController.deleteProduct);
 
-export const productRoutes = router;
+export const ProductRoutes = router;
 
-export default productRoutes;
+export default ProductRoutes;
 

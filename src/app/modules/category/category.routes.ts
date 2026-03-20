@@ -51,4 +51,4 @@ router.delete(
     categoryController.deleteCategory
 );
 
-export const categoryRoutes = router;
+export const CategoryRoutes = router;

@@ -4,20 +4,32 @@
   "main": "index.js",
   "license": "MIT",
   "scripts": {
-  "build": "tsc",
-  "start": "node dist/server.js",
-  "dev": "ts-node-dev --respawn src/server.ts",
-  "db:generate": "prisma generate",
-  "db:migrate": "prisma migrate dev",
-  "db:push": "prisma db push",
-  "db:pull": "prisma db pull",
-  "db:studio": "prisma studio",
-  "postinstall": "prisma generate",
-  "stripe:webhook": "stripe listen --forward-to localhost:5000/webhook"
-},
+    "build": "tsc",
+    "dev": "ts-node-dev --respawn --transpile-only ./src/server.ts",
+    "db:generate": "prisma generate --schema=./prisma/schema",
+    "db:migrate": "prisma migrate --schema=./prisma/schema",
+    "db:push": "prisma db push --schema=./prisma/schema",
+    "db:pull": "prisma db pull --schema=./prisma/schema",
+    "db:studio": "prisma studio --schema=./prisma/schema",
+    "postinstall": "prisma generate --schema=./prisma/schema.prisma",
+    "stripe:webhook": "stripe listen --forward-to localhost:5000/webhook"
+  },
+  "devDependencies": {
+    "@prisma/client": "^7.0.1",
+    "@types/cookie-parser": "^1.4.9",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^24.0.10",
+    "@types/nodemailer": "^6.4.17",
+    "@types/pg": "^8.15.6",
+    "prisma": "^7.0.1",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.8.3"
+  },
   "dependencies": {
     "@prisma/adapter-pg": "^7.0.1",
-    "@prisma/client": "^7.0.1",
     "axios": "^1.11.0",
     "bcryptjs": "^3.0.2",
     "cloudinary": "^2.9.0",
@@ -33,21 +45,8 @@
     "node-cron": "^4.2.1",
     "nodemailer": "^7.0.5",
     "pg": "^8.16.3",
-    "prisma": "^7.0.1",
     "stripe": "^19.1.0",
     "uuid": "^11.1.0",
     "zod": "^4.0.3"
-  },
-  "devDependencies": {
-    "@types/cookie-parser": "^1.4.9",
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.3",
-    "@types/jsonwebtoken": "^9.0.10",
-    "@types/multer": "^2.0.0",
-    "@types/node": "^24.0.10",
-    "@types/nodemailer": "^6.4.17",
-    "@types/pg": "^8.15.6",
-    "ts-node-dev": "^2.0.0",
-    "typescript": "^5.8.3"
   }
 }

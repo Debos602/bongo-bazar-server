@@ -1,6 +1,5 @@
 import express from 'express';
 import { apiLimiter } from '../middlewares/rateLimiter';
-import { userRoutes } from '../modules/user/user.routes';
 import { AuthRoutes } from '../modules/auth/auth.routes';
 import { PostRoutes } from '../modules/post/post.routes';
 import { CouponRoutes } from '../modules/coupon/coupon.routes';
@@ -10,8 +9,9 @@ import { WishlistRoutes } from '../modules/wishlist/wishlist.routes';
 import { CartRoutes } from '../modules/cart/cart.routes';
 import { ReviewRoutes } from '../modules/review/review.routes';
 import { VendorRoutes } from '../modules/vendor/vendor.routes';
-import { categoryRoutes } from '../modules/category/category.routes';
-import productRoutes from '../modules/product/product.routes';
+import { UserRoutes } from '../modules/user/user.routes';
+import { CategoryRoutes } from '../modules/category/category.routes';
+import ProductRoutes from '../modules/product/product.routes';
 
 
 const router = express.Router();
@@ -23,7 +23,7 @@ router.use(apiLimiter); // Apply to all routes
 const moduleRoutes = [
     {
         path: '/user',
-        route: userRoutes
+        route: UserRoutes
     },
 
     {
@@ -40,11 +40,11 @@ const moduleRoutes = [
     },
     {
         path: '/category',
-        route: categoryRoutes
+        route: CategoryRoutes
     },
     {
         path: '/product',
-        route: productRoutes
+        route: ProductRoutes
     },
     {
         path: '/order',
