@@ -9,31 +9,31 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ReviewController = void 0;
-const review_service_1 = require("./review.service");
+exports.WishlistController = void 0;
+const wishlist_service_1 = require("./wishlist.service");
 const create = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const data = Object.assign({}, (req.body || {}));
-    const created = yield review_service_1.ReviewService.create(data);
+    const created = yield wishlist_service_1.WishlistService.create(data);
     res.json(created);
 });
 const list = (_req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const items = yield review_service_1.ReviewService.list();
+    const items = yield wishlist_service_1.WishlistService.list();
     res.json(items);
 });
 const getOne = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const id = Number(req.params.id);
-    const item = yield review_service_1.ReviewService.getOne(id);
+    const item = yield wishlist_service_1.WishlistService.getOne(id);
     res.json(item);
 });
 const updateOne = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const id = Number(req.params.id);
     const data = Object.assign({}, (req.body || {}));
-    const updated = yield review_service_1.ReviewService.update(id, data);
+    const updated = yield wishlist_service_1.WishlistService.update(id, data);
     res.json(updated);
 });
 const remove = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const id = Number(req.params.id);
-    yield review_service_1.ReviewService.remove(id);
+    yield wishlist_service_1.WishlistService.remove(id);
     res.json({ message: 'Deleted' });
 });
-exports.ReviewController = { create, list, getOne, updateOne, remove };
+exports.WishlistController = { create, list, getOne, updateOne, remove };

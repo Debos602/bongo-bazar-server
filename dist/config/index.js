@@ -9,6 +9,8 @@ dotenv_1.default.config({ path: path_1.default.join(process.cwd(), '.env') });
 exports.default = {
     env: process.env.NODE_ENV,
     port: process.env.PORT,
+    superAdminEmail: process.env.SUPER_ADMIN,
+    superAdminPassword: process.env.SUPER_ADMIN_PASSWORD,
     stripeSecretKey: process.env.STRIPE_SECRET_KEY,
     stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
     salt_round: process.env.SALT_ROUND,

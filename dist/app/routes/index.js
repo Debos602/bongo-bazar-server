@@ -5,19 +5,18 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const rateLimiter_1 = require("../middlewares/rateLimiter");
-const admin_routes_1 = require("../modules/Admin/admin.routes");
-const appointment_routes_1 = require("../modules/Appointment/appointment.routes");
-const auth_routes_1 = require("../modules/Auth/auth.routes");
-const doctor_routes_1 = require("../modules/Doctor/doctor.routes");
-const doctorSchedule_routes_1 = require("../modules/DoctorSchedule/doctorSchedule.routes");
-const meta_routes_1 = require("../modules/Meta/meta.routes");
-const patient_route_1 = require("../modules/Patient/patient.route");
-const payment_routes_1 = require("../modules/Payment/payment.routes");
-const prescription_routes_1 = require("../modules/Prescription/prescription.routes");
-const review_routes_1 = require("../modules/Review/review.routes");
-const schedule_routes_1 = require("../modules/Schedule/schedule.routes");
-const specialties_routes_1 = require("../modules/Specialties/specialties.routes");
-const user_routes_1 = require("../modules/User/user.routes");
+const user_routes_1 = require("../modules/user/user.routes");
+const auth_routes_1 = require("../modules/auth/auth.routes");
+const post_routes_1 = require("../modules/post/post.routes");
+const coupon_routes_1 = require("../modules/coupon/coupon.routes");
+const order_routes_1 = require("../modules/order/order.routes");
+const address_routes_1 = require("../modules/address/address.routes");
+const wishlist_routes_1 = require("../modules/wishlist/wishlist.routes");
+const cart_routes_1 = require("../modules/cart/cart.routes");
+const review_routes_1 = require("../modules/review/review.routes");
+const vendor_routes_1 = require("../modules/vendor/vendor.routes");
+const category_routes_1 = require("../modules/category/category.routes");
+const product_routes_1 = __importDefault(require("../modules/product/product.routes"));
 const router = express_1.default.Router();
 router.use(rateLimiter_1.apiLimiter); // Apply to all routes
 const moduleRoutes = [
@@ -26,52 +25,48 @@ const moduleRoutes = [
         route: user_routes_1.userRoutes
     },
     {
-        path: '/admin',
-        route: admin_routes_1.AdminRoutes
-    },
-    {
         path: '/auth',
         route: auth_routes_1.AuthRoutes
     },
     {
-        path: '/specialties',
-        route: specialties_routes_1.SpecialtiesRoutes
+        path: '/post',
+        route: post_routes_1.PostRoutes
     },
     {
-        path: '/doctor',
-        route: doctor_routes_1.DoctorRoutes
+        path: '/coupon',
+        route: coupon_routes_1.CouponRoutes
     },
     {
-        path: '/patient',
-        route: patient_route_1.PatientRoutes
+        path: '/category',
+        route: category_routes_1.categoryRoutes
     },
     {
-        path: '/schedule',
-        route: schedule_routes_1.ScheduleRoutes
+        path: '/product',
+        route: product_routes_1.default
     },
     {
-        path: '/doctor-schedule',
-        route: doctorSchedule_routes_1.DoctorScheduleRoutes
+        path: '/order',
+        route: order_routes_1.OrderRoutes
     },
     {
-        path: '/appointment',
-        route: appointment_routes_1.AppointmentRoutes
+        path: '/address',
+        route: address_routes_1.AddressRoutes
     },
     {
-        path: '/payment',
-        route: payment_routes_1.PaymentRoutes
+        path: '/wishlist',
+        route: wishlist_routes_1.WishlistRoutes
     },
     {
-        path: '/prescription',
-        route: prescription_routes_1.PrescriptionRoutes
+        path: '/cart',
+        route: cart_routes_1.CartRoutes
     },
     {
         path: '/review',
         route: review_routes_1.ReviewRoutes
     },
     {
-        path: '/meta',
-        route: meta_routes_1.MetaRoutes
+        path: '/vendor',
+        route: vendor_routes_1.VendorRoutes
     }
 ];
 moduleRoutes.forEach(route => router.use(route.path, route.route));

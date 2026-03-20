@@ -12,12 +12,12 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ReviewService = void 0;
+exports.WishlistService = void 0;
 const prisma_1 = __importDefault(require("../../../shared/prisma"));
-exports.ReviewService = {
-    create: (data) => __awaiter(void 0, void 0, void 0, function* () { return prisma_1.default.review.create({ data }); }),
-    list: () => __awaiter(void 0, void 0, void 0, function* () { return prisma_1.default.review.findMany(); }),
-    getOne: (id) => __awaiter(void 0, void 0, void 0, function* () { return prisma_1.default.review.findUnique({ where: { id } }); }),
-    update: (id, data) => __awaiter(void 0, void 0, void 0, function* () { return prisma_1.default.review.update({ where: { id }, data }); }),
-    remove: (id) => __awaiter(void 0, void 0, void 0, function* () { return prisma_1.default.review.delete({ where: { id } }); }),
+exports.WishlistService = {
+    create: (data) => __awaiter(void 0, void 0, void 0, function* () { return prisma_1.default.wishlist.create({ data }); }),
+    list: () => __awaiter(void 0, void 0, void 0, function* () { return prisma_1.default.wishlist.findMany(); }),
+    getOne: (id) => __awaiter(void 0, void 0, void 0, function* () { return prisma_1.default.wishlist.findUnique({ where: { id } }); }),
+    update: (id, data) => __awaiter(void 0, void 0, void 0, function* () { return prisma_1.default.wishlist.update({ where: { id }, data }); }),
+    remove: (id) => __awaiter(void 0, void 0, void 0, function* () { return prisma_1.default.wishlist.delete({ where: { id } }); }),
 };

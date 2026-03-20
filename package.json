@@ -11,7 +11,9 @@
     "db:pull": "prisma db pull --schema=./prisma/schema",
     "db:studio": "prisma studio --schema=./prisma/schema",
     "postinstall": "prisma generate --schema=./prisma/schema",
-    "stripe:webhook": "stripe listen --forward-to localhost:5000/webhook"
+    "stripe:webhook": "stripe listen --forward-to localhost:5000/webhook",
+    "build": "tsc",
+  "start": "node dist/server.js"
   },
   "devDependencies": {
     "@prisma/client": "^7.0.1",

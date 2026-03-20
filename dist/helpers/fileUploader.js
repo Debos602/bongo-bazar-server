@@ -15,54 +15,60 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.fileUploader = void 0;
 const multer_1 = __importDefault(require("multer"));
 const path_1 = __importDefault(require("path"));
-const cloudinary_1 = require("cloudinary");
-const config_1 = __importDefault(require("../config"));
 const fs_1 = __importDefault(require("fs"));
+const cloudinary_1 = __importDefault(require("./cloudinary"));
+// Disk storage (keeps compatibility)
 const storage = multer_1.default.diskStorage({
     destination: function (req, file, cb) {
         cb(null, path_1.default.join(process.cwd(), '/uploads'));
     },
     filename: function (req, file, cb) {
-        cb(null, file.originalname);
+        cb(null, `${Date.now()}-${file.originalname}`);
     }
 });
-function uploadToCloudinary(file) {
+// Memory storage for direct buffer uploads
+const memoryStorage = multer_1.default.memoryStorage();
+const uploadDisk = (0, multer_1.default)({ storage });
+const uploadMemory = (0, multer_1.default)({ storage: memoryStorage });
+function uploadFilePathToCloudinary(filePath, originalname) {
     return __awaiter(this, void 0, void 0, function* () {
-        // Configuration
-        cloudinary_1.v2.config({
-            cloud_name: config_1.default.cloudinary.cloud_name,
-            api_key: config_1.default.cloudinary.api_key,
-            api_secret: config_1.default.cloudinary.api_secret
+        const uploadResult = yield cloudinary_1.default.uploader.upload(filePath, {
+            public_id: `${originalname !== null && originalname !== void 0 ? originalname : 'file'}-${Date.now()}`,
+            folder: 'ph-health-care',
         });
-        // Upload an image
-        const uploadResult = yield cloudinary_1.v2.uploader
-            .upload(file.path, {
-            public_id: `${file.originalname}-${Date.now()}`,
-        })
-            .catch((error) => {
-            throw error;
-        });
-        fs_1.default.unlinkSync(file.path);
+        try {
+            fs_1.default.unlinkSync(filePath);
+        }
+        catch (e) { /* ignore */ }
         return uploadResult;
-        // // Optimize delivery by resizing and applying auto-format and auto-quality
-        // const optimizeUrl = cloudinary.url(`${uploadResult?.public_id}`, {
-        //     fetch_format: 'auto',
-        //     quality: 'auto'
-        // });
-        // console.log(optimizeUrl);
-        // // Transform the image: auto-crop to square aspect_ratio
-        // const autoCropUrl = cloudinary.url(`${uploadResult?.public_id}`, {
-        //     crop: 'auto',
-        //     gravity: 'auto',
-        //     width: 500,
-        //     height: 500,
-        // });
-        // console.log(autoCropUrl);    
     });
 }
-;
-const upload = (0, multer_1.default)({ storage: storage });
+function uploadBufferToCloudinary(buffer, originalname) {
+    return new Promise((resolve, reject) => {
+        const stream = cloudinary_1.default.uploader.upload_stream({ public_id: `${originalname !== null && originalname !== void 0 ? originalname : 'file'}-${Date.now()}`, folder: 'ph-health-care' }, (error, result) => {
+            if (error)
+                return reject(error);
+            resolve(result);
+        });
+        stream.end(buffer);
+    });
+}
+// Backwards-compatible wrapper: accept multer file
+function uploadToCloudinary(file) {
+    return __awaiter(this, void 0, void 0, function* () {
+        if (file.buffer) {
+            return uploadBufferToCloudinary(file.buffer, file.originalname);
+        }
+        return uploadFilePathToCloudinary(file.path, file.originalname);
+    });
+}
 exports.fileUploader = {
-    upload,
-    uploadToCloudinary
+    // original exports
+    upload: uploadDisk,
+    uploadToCloudinary,
+    // new helpers
+    uploadDisk,
+    uploadMemory,
+    uploadFilePathToCloudinary,
+    uploadBufferToCloudinary,
 };

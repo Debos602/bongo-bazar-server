@@ -207,8 +207,12 @@ const forgotPassword = (0, catchAsync_1.default)((req, res) => __awaiter(void 0,
     });
 }));
 const resetPassword = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const token = req.headers.authorization || "";
-    yield auth_service_1.AuthServices.resetPassword(token, req.body);
+    // Extract token from Authorization header (remove "Bearer " prefix)
+    const authHeader = req.headers.authorization;
+    console.log({ authHeader });
+    const token = authHeader ? authHeader.replace('Bearer ', '') : null;
+    const user = req.user; // Will be populated if authenticated via middleware
+    yield auth_service_1.AuthServices.resetPassword(token, req.body, user);
     (0, sendResponse_1.default)(res, {
         statusCode: http_status_1.default.OK,
         success: true,
@@ -226,11 +230,121 @@ const getMe = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, 
         data: result,
     });
 }));
+const register = (0, catchAsync_1.default)((req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { email, password, name, phone } = req.body;
+    // Validate required fields
+    if (!email || !password || !name || !phone) {
+        return (0, sendResponse_1.default)(res, {
+            statusCode: http_status_1.default.BAD_REQUEST,
+            success: false,
+            message: "Email, password, name, and phone are required",
+            data: null
+        });
+    }
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        return (0, sendResponse_1.default)(res, {
+            statusCode: http_status_1.default.BAD_REQUEST,
+            success: false,
+            message: "Invalid email format",
+            data: null
+        });
+    }
+    // Validate password strength (at least 6 characters)
+    if (password.length < 6) {
+        return (0, sendResponse_1.default)(res, {
+            statusCode: http_status_1.default.BAD_REQUEST,
+            success: false,
+            message: "Password must be at least 6 characters long",
+            data: null
+        });
+    }
+    const accessTokenExpiresIn = config_1.default.jwt.expires_in;
+    const refreshTokenExpiresIn = config_1.default.jwt.refresh_token_expires_in;
+    // Convert accessTokenExpiresIn to milliseconds
+    let accessTokenMaxAge = 0;
+    const accessTokenUnit = accessTokenExpiresIn.slice(-1);
+    const accessTokenValue = parseInt(accessTokenExpiresIn.slice(0, -1));
+    if (accessTokenUnit === "y") {
+        accessTokenMaxAge = accessTokenValue * 365 * 24 * 60 * 60 * 1000;
+    }
+    else if (accessTokenUnit === "M") {
+        accessTokenMaxAge = accessTokenValue * 30 * 24 * 60 * 60 * 1000;
+    }
+    else if (accessTokenUnit === "w") {
+        accessTokenMaxAge = accessTokenValue * 7 * 24 * 60 * 60 * 1000;
+    }
+    else if (accessTokenUnit === "d") {
+        accessTokenMaxAge = accessTokenValue * 24 * 60 * 60 * 1000;
+    }
+    else if (accessTokenUnit === "h") {
+        accessTokenMaxAge = accessTokenValue * 60 * 60 * 1000;
+    }
+    else if (accessTokenUnit === "m") {
+        accessTokenMaxAge = accessTokenValue * 60 * 1000;
+    }
+    else if (accessTokenUnit === "s") {
+        accessTokenMaxAge = accessTokenValue * 1000;
+    }
+    else {
+        accessTokenMaxAge = 1000 * 60 * 60; // default 1 hour
+    }
+    // Convert refreshTokenExpiresIn to milliseconds
+    let refreshTokenMaxAge = 0;
+    const refreshTokenUnit = refreshTokenExpiresIn.slice(-1);
+    const refreshTokenValue = parseInt(refreshTokenExpiresIn.slice(0, -1));
+    if (refreshTokenUnit === "y") {
+        refreshTokenMaxAge = refreshTokenValue * 365 * 24 * 60 * 60 * 1000;
+    }
+    else if (refreshTokenUnit === "M") {
+        refreshTokenMaxAge = refreshTokenValue * 30 * 24 * 60 * 60 * 1000;
+    }
+    else if (refreshTokenUnit === "w") {
+        refreshTokenMaxAge = refreshTokenValue * 7 * 24 * 60 * 60 * 1000;
+    }
+    else if (refreshTokenUnit === "d") {
+        refreshTokenMaxAge = refreshTokenValue * 24 * 60 * 60 * 1000;
+    }
+    else if (refreshTokenUnit === "h") {
+        refreshTokenMaxAge = refreshTokenValue * 60 * 60 * 1000;
+    }
+    else if (refreshTokenUnit === "m") {
+        refreshTokenMaxAge = refreshTokenValue * 60 * 1000;
+    }
+    else if (refreshTokenUnit === "s") {
+        refreshTokenMaxAge = refreshTokenValue * 1000;
+    }
+    else {
+        refreshTokenMaxAge = 1000 * 60 * 60 * 24 * 30; // default 30 days
+    }
+    const result = yield auth_service_1.AuthServices.register(req.body);
+    const { refreshToken, accessToken } = result;
+    res.cookie("accessToken", accessToken, {
+        secure: true,
+        httpOnly: true,
+        sameSite: "none",
+        maxAge: accessTokenMaxAge,
+    });
+    res.cookie("refreshToken", refreshToken, {
+        secure: true,
+        httpOnly: true,
+        sameSite: "none",
+        maxAge: refreshTokenMaxAge,
+    });
+    return (0, sendResponse_1.default)(res, {
+        statusCode: http_status_1.default.CREATED,
+        success: true,
+        message: "User registered successfully!",
+        data: result.user
+    });
+}));
 exports.AuthController = {
     loginUser,
     refreshToken,
     changePassword,
     forgotPassword,
     resetPassword,
-    getMe
+    getMe,
+    register
 };

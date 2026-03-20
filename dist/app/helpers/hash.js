@@ -45,38 +45,19 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-const client_1 = require("@prisma/client");
+exports.comparePassword = exports.hashPassword = void 0;
 const bcrypt = __importStar(require("bcryptjs"));
-const config_1 = __importDefault(require("../config"));
-const prisma_1 = __importDefault(require("../shared/prisma"));
-const seedSuperAdmin = () => __awaiter(void 0, void 0, void 0, function* () {
-    try {
-        const isExistSuperAdmin = yield prisma_1.default.user.findFirst({
-            where: {
-                role: client_1.Role.SUPER_ADMIN
-            }
-        });
-        if (isExistSuperAdmin) {
-            console.log("Super admin already exists!");
-            return;
-        }
-        const hashedPassword = yield bcrypt.hash(config_1.default.superAdminPassword, Number(config_1.default.salt_round));
-        const superAdminData = yield prisma_1.default.user.create({
-            data: {
-                email: config_1.default.superAdminEmail,
-                name: "Super Admin",
-                phone: "01234567890",
-                password: hashedPassword,
-                role: client_1.Role.SUPER_ADMIN
-            }
-        });
-        console.log("Super Admin Created Successfully!", superAdminData);
-    }
-    catch (err) {
-        console.error(err);
-    }
-    finally {
-        yield prisma_1.default.$disconnect();
-    }
+const config_1 = __importDefault(require("../../config"));
+const hashPassword = (plain) => __awaiter(void 0, void 0, void 0, function* () {
+    const rounds = Number(config_1.default.salt_round) || 10;
+    return bcrypt.hash(plain, rounds);
 });
-exports.default = seedSuperAdmin;
+exports.hashPassword = hashPassword;
+const comparePassword = (plain, hashed) => __awaiter(void 0, void 0, void 0, function* () {
+    return bcrypt.compare(plain, hashed);
+});
+exports.comparePassword = comparePassword;
+exports.default = {
+    hashPassword: exports.hashPassword,
+    comparePassword: exports.comparePassword,
+};

@@ -59,122 +59,55 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.userService = void 0;
 const client_1 = require("@prisma/client");
 const bcrypt = __importStar(require("bcryptjs"));
+const ApiError_1 = __importDefault(require("../../errors/ApiError"));
+const http_status_1 = __importDefault(require("http-status"));
 const config_1 = __importDefault(require("../../../config"));
 const fileUploader_1 = require("../../../helpers/fileUploader");
 const paginationHelper_1 = require("../../../helpers/paginationHelper");
 const prisma_1 = __importDefault(require("../../../shared/prisma"));
 const user_constant_1 = require("./user.constant");
 const createAdmin = (req) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a, _b, _c, _d, _e;
+    req.body = (_a = req.body) !== null && _a !== void 0 ? _a : {};
     const file = req.file;
     if (file) {
         const uploadToCloudinary = yield fileUploader_1.fileUploader.uploadToCloudinary(file);
-        req.body.admin.picture = uploadToCloudinary === null || uploadToCloudinary === void 0 ? void 0 : uploadToCloudinary.secure_url;
+        req.body.picture = uploadToCloudinary === null || uploadToCloudinary === void 0 ? void 0 : uploadToCloudinary.secure_url;
+    }
+    if (!req.body.password) {
+        throw new ApiError_1.default(http_status_1.default.BAD_REQUEST, 'Password is required');
+    }
+    if (!req.body.email) {
+        throw new ApiError_1.default(http_status_1.default.BAD_REQUEST, 'Email is required');
     }
     const hashedPassword = yield bcrypt.hash(req.body.password, Number(config_1.default.salt_round));
+    const adminEmail = req.body.email.toLowerCase().trim();
+    const derivedName = (_b = req.body.name) !== null && _b !== void 0 ? _b : adminEmail.split('@')[0];
     const userData = {
-        email: req.body.admin.email,
+        email: adminEmail,
         password: hashedPassword,
-        role: client_1.UserRole.ADMIN
+        role: client_1.Role.ADMIN,
+        name: derivedName,
+        phone: (_d = (_c = req.body.phone) !== null && _c !== void 0 ? _c : req.body.contactNumber) !== null && _d !== void 0 ? _d : '',
+        picture: (_e = req.body.picture) !== null && _e !== void 0 ? _e : null,
     };
-    const result = yield prisma_1.default.$transaction((transactionClient) => __awaiter(void 0, void 0, void 0, function* () {
-        yield transactionClient.user.create({
-            data: userData
-        });
-        const createdAdminData = yield transactionClient.admin.create({
-            data: req.body.admin
-        });
-        return createdAdminData;
-    }));
-    return result;
-});
-const createDoctor = (req) => __awaiter(void 0, void 0, void 0, function* () {
-    const file = req.file;
-    if (file) {
-        const uploadToCloudinary = yield fileUploader_1.fileUploader.uploadToCloudinary(file);
-        req.body.doctor.picture = uploadToCloudinary === null || uploadToCloudinary === void 0 ? void 0 : uploadToCloudinary.secure_url;
-    }
-    const hashedPassword = yield bcrypt.hash(req.body.password, Number(config_1.default.salt_round));
-    const userData = {
-        email: req.body.doctor.email,
-        password: hashedPassword,
-        role: client_1.UserRole.DOCTOR,
-    };
-    // Extract specialties from doctor data
-    const _a = req.body.doctor, { specialties } = _a, doctorData = __rest(_a, ["specialties"]);
-    const result = yield prisma_1.default.$transaction((transactionClient) => __awaiter(void 0, void 0, void 0, function* () {
-        // Step 1: Create user
-        yield transactionClient.user.create({
-            data: userData,
-        });
-        // Step 2: Create doctor
-        const createdDoctorData = yield transactionClient.doctor.create({
-            data: doctorData,
-        });
-        // Step 3: Create doctor specialties if provided
-        if (specialties && Array.isArray(specialties) && specialties.length > 0) {
-            // Verify all specialties exist
-            const existingSpecialties = yield transactionClient.specialties.findMany({
-                where: {
-                    id: {
-                        in: specialties,
-                    },
-                },
-                select: {
-                    id: true,
-                },
-            });
-            const existingSpecialtyIds = existingSpecialties.map((s) => s.id);
-            const invalidSpecialties = specialties.filter((id) => !existingSpecialtyIds.includes(id));
-            if (invalidSpecialties.length > 0) {
-                throw new Error(`Invalid specialty IDs: ${invalidSpecialties.join(", ")}`);
-            }
-            // Create doctor specialties relations
-            const doctorSpecialtiesData = specialties.map((specialtyId) => ({
-                doctorId: createdDoctorData.id,
-                specialitiesId: specialtyId,
-            }));
-            yield transactionClient.doctorSpecialties.createMany({
-                data: doctorSpecialtiesData,
-            });
+    console.log({ userData }, "from service");
+    const result = yield prisma_1.default.user.create({
+        data: userData,
+        select: {
+            id: true,
+            createdAt: true,
+            updatedAt: true,
+            email: true,
+            name: true,
+            phone: true,
+            picture: true,
+            needPasswordChange: true,
+            isVerified: true,
+            status: true,
+            role: true,
         }
-        // Step 4: Return doctor with specialties
-        const doctorWithSpecialties = yield transactionClient.doctor.findUnique({
-            where: {
-                id: createdDoctorData.id,
-            },
-            include: {
-                doctorSpecialties: {
-                    include: {
-                        specialities: true,
-                    },
-                },
-            },
-        });
-        return doctorWithSpecialties;
-    }));
-    return result;
-});
-const createPatient = (req) => __awaiter(void 0, void 0, void 0, function* () {
-    const file = req.file;
-    if (file) {
-        const uploadedProfileImage = yield fileUploader_1.fileUploader.uploadToCloudinary(file);
-        req.body.patient.picture = uploadedProfileImage === null || uploadedProfileImage === void 0 ? void 0 : uploadedProfileImage.secure_url;
-    }
-    const hashedPassword = yield bcrypt.hash(req.body.password, Number(config_1.default.salt_round));
-    const userData = {
-        email: req.body.patient.email,
-        password: hashedPassword,
-        role: client_1.UserRole.PATIENT
-    };
-    const result = yield prisma_1.default.$transaction((transactionClient) => __awaiter(void 0, void 0, void 0, function* () {
-        yield transactionClient.user.create({
-            data: Object.assign(Object.assign({}, userData), { needPasswordChange: false })
-        });
-        const createdPatientData = yield transactionClient.patient.create({
-            data: req.body.patient
-        });
-        return createdPatientData;
-    }));
+    });
     return result;
 });
 const getAllFromDB = (params, options) => __awaiter(void 0, void 0, void 0, function* () {
@@ -207,11 +140,9 @@ const getAllFromDB = (params, options) => __awaiter(void 0, void 0, void 0, func
         where: whereConditions,
         skip,
         take: limit,
-        orderBy: options.sortBy && options.sortOrder ? {
-            [options.sortBy]: options.sortOrder
-        } : {
-            createdAt: 'desc'
-        },
+        orderBy: options.sortBy && options.sortOrder
+            ? { [options.sortBy]: options.sortOrder }
+            : { createdAt: 'desc' },
         select: {
             id: true,
             email: true,
@@ -220,33 +151,22 @@ const getAllFromDB = (params, options) => __awaiter(void 0, void 0, void 0, func
             status: true,
             createdAt: true,
             updatedAt: true,
-            admin: true,
-            patient: true,
-            doctor: true
         }
     });
     const total = yield prisma_1.default.user.count({
         where: whereConditions
     });
     return {
-        meta: {
-            page,
-            limit,
-            total
-        },
+        meta: { page, limit, total },
         data: result
     };
 });
 const changeProfileStatus = (id, status) => __awaiter(void 0, void 0, void 0, function* () {
-    const userData = yield prisma_1.default.user.findUniqueOrThrow({
-        where: {
-            id
-        }
+    yield prisma_1.default.user.findUniqueOrThrow({
+        where: { id }
     });
     const updateUserStatus = yield prisma_1.default.user.update({
-        where: {
-            id
-        },
+        where: { id },
         data: status
     });
     return updateUserStatus;
@@ -265,154 +185,46 @@ const getMyProfile = (user) => __awaiter(void 0, void 0, void 0, function* () {
             status: true,
         },
     });
-    let profileInfo;
-    if (userInfo.role === client_1.UserRole.SUPER_ADMIN) {
-        profileInfo = yield prisma_1.default.admin.findUnique({
-            where: {
-                email: userInfo.email,
-            },
-            select: {
-                id: true,
-                name: true,
-                email: true,
-                picture: true,
-                contactNumber: true,
-                isDeleted: true,
-                createdAt: true,
-                updatedAt: true,
-            },
-        });
-    }
-    else if (userInfo.role === client_1.UserRole.ADMIN) {
-        profileInfo = yield prisma_1.default.admin.findUnique({
-            where: {
-                email: userInfo.email,
-            },
-            select: {
-                id: true,
-                name: true,
-                email: true,
-                picture: true,
-                contactNumber: true,
-                isDeleted: true,
-                createdAt: true,
-                updatedAt: true,
-            },
-        });
-    }
-    else if (userInfo.role === client_1.UserRole.DOCTOR) {
-        profileInfo = yield prisma_1.default.doctor.findUnique({
-            where: {
-                email: userInfo.email,
-            },
-            select: {
-                id: true,
-                name: true,
-                email: true,
-                picture: true,
-                contactNumber: true,
-                address: true,
-                registrationNumber: true,
-                experience: true,
-                gender: true,
-                appointmentFee: true,
-                qualification: true,
-                currentWorkingPlace: true,
-                designation: true,
-                averageRating: true,
-                isDeleted: true,
-                createdAt: true,
-                updatedAt: true,
-                doctorSpecialties: {
-                    include: {
-                        specialities: true,
-                    },
-                },
-            },
-        });
-    }
-    else if (userInfo.role === client_1.UserRole.PATIENT) {
-        profileInfo = yield prisma_1.default.patient.findUnique({
-            where: {
-                email: userInfo.email,
-            },
-            select: {
-                id: true,
-                name: true,
-                email: true,
-                picture: true,
-                contactNumber: true,
-                address: true,
-                isDeleted: true,
-                createdAt: true,
-                updatedAt: true,
-                patientHealthData: true,
-                medicalReport: {
-                    select: {
-                        id: true,
-                        patientId: true,
-                        reportName: true,
-                        reportLink: true,
-                        createdAt: true,
-                        updatedAt: true,
-                    },
-                },
-            },
-        });
-    }
+    const profileInfo = yield prisma_1.default.user.findUnique({
+        where: {
+            email: userInfo.email,
+        },
+        select: {
+            id: true,
+            name: true,
+            email: true,
+            picture: true,
+            phone: true,
+            createdAt: true,
+            updatedAt: true,
+        },
+    });
     return Object.assign(Object.assign({}, userInfo), profileInfo);
 });
 const updateMyProfie = (user, req) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
     const userInfo = yield prisma_1.default.user.findUniqueOrThrow({
         where: {
             email: user === null || user === void 0 ? void 0 : user.email,
             status: client_1.UserStatus.ACTIVE
         }
     });
+    req.body = (_a = req.body) !== null && _a !== void 0 ? _a : {};
     const file = req.file;
     if (file) {
         const uploadToCloudinary = yield fileUploader_1.fileUploader.uploadToCloudinary(file);
         req.body.picture = uploadToCloudinary === null || uploadToCloudinary === void 0 ? void 0 : uploadToCloudinary.secure_url;
     }
-    let profileInfo;
-    if (userInfo.role === client_1.UserRole.SUPER_ADMIN) {
-        profileInfo = yield prisma_1.default.admin.update({
-            where: {
-                email: userInfo.email
-            },
-            data: req.body
-        });
-    }
-    else if (userInfo.role === client_1.UserRole.ADMIN) {
-        profileInfo = yield prisma_1.default.admin.update({
-            where: {
-                email: userInfo.email
-            },
-            data: req.body
-        });
-    }
-    else if (userInfo.role === client_1.UserRole.DOCTOR) {
-        profileInfo = yield prisma_1.default.doctor.update({
-            where: {
-                email: userInfo.email
-            },
-            data: req.body
-        });
-    }
-    else if (userInfo.role === client_1.UserRole.PATIENT) {
-        profileInfo = yield prisma_1.default.patient.update({
-            where: {
-                email: userInfo.email
-            },
-            data: req.body
-        });
-    }
+    const profileInfo = yield prisma_1.default.user.update({
+        where: {
+            email: userInfo.email
+        },
+        data: req.body
+    });
     return Object.assign({}, profileInfo);
 });
 exports.userService = {
     createAdmin,
-    createDoctor,
-    createPatient,
     getAllFromDB,
     changeProfileStatus,
     getMyProfile,
