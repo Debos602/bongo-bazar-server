@@ -4,21 +4,19 @@ import express, { Application, NextFunction, Request, Response } from 'express';
 import httpStatus from 'http-status';
 import globalErrorHandler from './app/middlewares/globalErrorHandler';
 import router from './app/routes';
+import config from './config';
 
 const app: Application = express();
 app.use(cookieParser());
 
 app.use(cors({
-    origin: ['http://localhost:3000', 'http://localhost:3001'],
+    origin: [`${config.frontendUrl}`],
     credentials: true
 }));
 
 //parser
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-
-
 
 app.get('/', (req: Request, res: Response) => {
     res.send({
