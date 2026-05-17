@@ -109,6 +109,35 @@ async function callOpenRouter(
       !assistantMessage.tool_calls ||
       assistantMessage.tool_calls.length === 0
     ) {
+      // If the model didn't call any tools, try a local fallback search
+      try {
+        const attempts: string[] = [];
+        // original message
+        attempts.push(userMessage);
+        // cleaned message (remove punctuation but keep unicode letters/numbers)
+        const cleaned = userMessage.replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
+        if (cleaned && cleaned !== userMessage) attempts.push(cleaned);
+        // numeric tokens (e.g., model numbers like 1381)
+        const nums = (userMessage.match(/\d{3,}/g) || []).map((s) => s.trim());
+        attempts.push(...nums);
+
+        for (const attempt of attempts) {
+          if (!attempt || attempt.length === 0) continue;
+          console.log(`[AI Fallback] trying search_products with: "${attempt}"`);
+          const fallback = await executeTool("search_products", { name: attempt });
+          const parsed = JSON.parse(fallback || "{}");
+          if (parsed && Array.isArray(parsed.products) && parsed.products.length > 0) {
+            const items = parsed.products
+              .slice(0, 5)
+              .map((p: any) => `${p.name} — ৳${p.price} — ${p.stock}টি স্টক`)
+              .join("\n");
+            return `আমি এই পণ্যগুলো খুঁজে পেয়েছি:\n${items}`;
+          }
+        }
+      } catch (err) {
+        console.warn("[AI Fallback] search failed:", err);
+      }
+
       return assistantMessage.content || "দুঃখিত, উত্তর দিতে পারলাম না।";
     }
 

@@ -1,0 +1,1 @@
+- [Updated AI search products error message to Bengali](src/app/modules/ai/ai.tools.ts) — Changed the "no product found" message to match the user's reported Bengali error: "দুঃখিত, এ আইডির কোন পণ্য আমাদের বাজারে পাওয়া যায় না। আপনি অন্য কোন পণ্য সম্পর্কে জানতে চাইছেন?"

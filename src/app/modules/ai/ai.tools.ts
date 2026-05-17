@@ -145,9 +145,6 @@ export async function executeTool(
         const products = await prisma.product.findMany({
           where: {
             isPublished: true,
-            ...(name && {
-              name: { contains: name, mode: "insensitive" },
-            }),
             ...(minPrice !== undefined && { price: { gte: minPrice } }),
             ...(maxPrice !== undefined && { price: { lte: maxPrice } }),
             ...(category && {
@@ -162,6 +159,14 @@ export async function executeTool(
                 },
               },
             }),
+            ...(name && {
+              OR: [
+                { name: { contains: name, mode: "insensitive" } },
+                { slug: { contains: name, mode: "insensitive" } },
+                { sku: { contains: name, mode: "insensitive" } },
+                { vendor: { shopName: { contains: name, mode: "insensitive" } } },
+              ],
+            }),
           },
           include: {
             categories: { include: { category: true } },
@@ -170,9 +175,11 @@ export async function executeTool(
           take: limit,
           orderBy: { rating: "desc" },
         });
+        console.log("[AI Tool] search_products called with:", { name, category, minPrice, maxPrice, limit });
+        console.log(`[AI Tool] search_products found ${products.length} products`);
 
         if (products.length === 0) {
-          return JSON.stringify({ message: "কোনো product পাওয়া যায়নি।", products: [] });
+          return JSON.stringify({ message: "দুঃখিত, এ আইডির কোন পণ্য আমাদের বাজারে পাওয়া যায় না। আপনি অন্য কোন পণ্য সম্পর্কে জানতে চাইছেন?", products: [] });
         }
 
         return JSON.stringify({
@@ -201,14 +208,22 @@ export async function executeTool(
           where: {
             ...(productId ? { id: productId } : {}),
             ...(productName
-              ? { name: { contains: productName, mode: "insensitive" } }
+              ? {
+                  OR: [
+                    { name: { contains: productName, mode: "insensitive" } },
+                    { slug: { contains: productName, mode: "insensitive" } },
+                    { sku: { contains: productName, mode: "insensitive" } },
+                  ],
+                }
               : {}),
             isPublished: true,
           },
           select: { id: true, name: true, stock: true, price: true },
         });
+        console.log("[AI Tool] check_stock called with:", { productId, productName });
 
         if (!product) {
+          console.log("[AI Tool] check_stock: product not found");
           return JSON.stringify({ message: "Product খুঁজে পাওয়া যায়নি।" });
         }
 
