@@ -52,6 +52,7 @@ model Product {
   price         Float
   oldPrice      Float?
   discount      Int?
+  tag         String? 
 
   image         String
   images        String[]
@@ -225,7 +226,7 @@ enum Role {
   ADMIN
   VENDOR
   USER
-}
+} 
 
 enum UserStatus {
   ACTIVE
