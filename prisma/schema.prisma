@@ -52,8 +52,8 @@ model Product {
   price         Float
   oldPrice      Float?
   discount      Int?
-  tag         String? 
-
+  tags         String[]
+  badgeType     BadgeType?   
   image         String
   images        String[]
 
@@ -255,4 +255,12 @@ enum PaymentStatus {
   PAID
   FAILED
   REFUNDED
+}
+
+enum BadgeType {
+  NEW
+  HOT
+  SALE
+  BESTSELLER
+  LIMITED
 }
