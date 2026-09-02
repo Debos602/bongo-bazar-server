@@ -65,6 +65,18 @@ const getAllCategories = async (options: IPaginationOptions) => {
     };
 };
 
+const getCategoryBasicInfo = async () => {
+    return prisma.category.findMany({
+        select: {
+            id: true,
+            name: true,
+            Image: true,
+            slug: true
+        },
+        orderBy: { id: "asc" }
+    });
+};
+
 const getCategoryById = async (id: number): Promise<Category | null> => {
     const result = await prisma.category.findUnique({
         where: { id },
@@ -180,6 +192,7 @@ const deleteCategory = async (id: number): Promise<Category> => {
 export const categoryService = {
     createCategory,
     getAllCategories,
+    getCategoryBasicInfo,
     getCategoryById,
     getCategoryBySlug,
     updateCategory,

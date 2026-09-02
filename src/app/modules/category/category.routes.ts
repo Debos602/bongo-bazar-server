@@ -12,6 +12,12 @@ router.get(
     '/',
     categoryController.getAllCategories
 );
+
+// Get only category ID, name, and image
+router.get(
+    '/basic',
+    categoryController.getCategoryBasicInfo
+);
 // get category by slug - accessible to VENDOR and ADMIN
 router.get(
     '/slug/:slug',
