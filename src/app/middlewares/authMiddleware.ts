@@ -7,7 +7,9 @@ import { Role } from '@prisma/client';
 export const authenticate = async (req: Request & { user?: any; }, res: Response, next: NextFunction) => {
     try {
         const authHeader = req.headers.authorization;
-        const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader as string;
+        const token = authHeader?.startsWith('Bearer ')
+            ? authHeader.slice(7).trim()
+            : authHeader?.trim() || req.cookies?.accessToken;
         if (!token) throw new ApiError(httpStatus.UNAUTHORIZED, 'You are not authorized');
 
         const payload: any = authUtils.verifyToken(token) as any;

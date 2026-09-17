@@ -26,7 +26,7 @@ export const CartService = {
     }),
     getOne: async (id: number) => prisma.cart.findUnique({ where: { id } }),
     update: async (id: number, data: Prisma.CartUpdateInput) => prisma.cart.update({ where: { id }, data }),
-    remove: async (id: number) => prisma.cart.delete({ where: { id } }),
+    remove: async (id: number) => prisma.cart.deleteMany({ where: { id } }),
     getCartCount: async (userId: number) => {
         // ✅ Transaction বাদ — আলাদা আলাদা query
         const [totalItems, totalQuantityResult] = await Promise.all([
