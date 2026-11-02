@@ -8,6 +8,7 @@ import { paginationHelper } from "../../../helpers/paginationHelper";
 const createCategory = async (payload: {
     name: string;
     slug: string;
+    Image?: string | null;
 }): Promise<Category> => {
     // Check if slug already exists
     const existingCategory = await prisma.category.findUnique({
@@ -24,7 +25,8 @@ const createCategory = async (payload: {
     const result = await prisma.category.create({
         data: {
             name: payload.name,
-            slug: payload.slug
+            slug: payload.slug,
+            Image: payload.Image
         }
     });
 
@@ -43,6 +45,7 @@ const getAllCategories = async (options: IPaginationOptions) => {
             : { id: "asc" },
         include: {
             products: {
+                where: { product: { isPublished: true, isBlocked: false, vendor: { status: "APPROVED" } } },
                 select: {
                     product: {
                         select: {
@@ -82,6 +85,7 @@ const getCategoryById = async (id: number): Promise<Category | null> => {
         where: { id },
         include: {
             products: {
+                where: { product: { isPublished: true, isBlocked: false, vendor: { status: "APPROVED" } } },
                 include: {
                     product: {
                         select: {
@@ -105,6 +109,7 @@ const getCategoryBySlug = async (slug: string): Promise<Category | null> => {
         where: { slug },
         include: {
             products: {
+                where: { product: { isPublished: true, isBlocked: false, vendor: { status: "APPROVED" } } },
                 include: {
                     product: {
                         select: {
@@ -127,7 +132,7 @@ const getCategoryBySlug = async (slug: string): Promise<Category | null> => {
 
 const updateCategory = async (
     id: number,
-    payload: Partial<{ name: string; slug: string; }>
+    payload: Partial<{ name: string; slug: string; Image: string | null; }>
 ): Promise<Category> => {
     // Check if category exists
     const existingCategory = await prisma.category.findUnique({

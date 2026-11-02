@@ -1,4 +1,6 @@
+import httpStatus from 'http-status';
 import prisma from '../../../shared/prisma';
+import ApiError from '../../errors/ApiError';
 
 export const AddressService = {
     // ✅ userId token থেকে নেবে
@@ -13,10 +15,13 @@ export const AddressService = {
             where: { userId },
         }),
 
-    getOne: async (id: number, userId: number) =>
-        prisma.address.findFirst({
+    getOne: async (id: number, userId: number) => {
+        const address = await prisma.address.findFirst({
             where: { id, userId }, // ✅ অন্যের address দেখা যাবে না
-        }),
+        });
+        if (!address) throw new ApiError(httpStatus.NOT_FOUND, 'Address not found');
+        return address;
+    },
 
     update: async (id: number, userId: number, data: any) =>
         prisma.address.update({
@@ -28,4 +33,4 @@ export const AddressService = {
         prisma.address.delete({
             where: { id, userId },
         }),
-};
+};

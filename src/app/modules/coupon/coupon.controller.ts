@@ -1,34 +1,20 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
+import httpStatus from 'http-status';
+import catchAsync from '../../../shared/catchAsync';
+import sendResponse from '../../../shared/sendResponse';
 import { CouponService } from './coupon.service';
 
-const create = async (req: Request, res: Response) => {
-    const data = { ...(req.body || {}) };
-    const created = await CouponService.create(data);
-    res.json(created);
-};
+const ok = (res: Response, message: string, data: unknown, statusCode: number = httpStatus.OK) =>
+    sendResponse(res, { statusCode, success: true, message, data });
 
-const list = async (_req: Request, res: Response) => {
-    const items = await CouponService.list();
-    res.json(items);
+export const CouponController = {
+    create: catchAsync(async (req: any, res) => ok(res, 'Coupon created', await CouponService.create(req.body, req.user), httpStatus.CREATED)),
+    list: catchAsync(async (req: any, res) => ok(res, 'Coupons fetched', await CouponService.list(req.user))),
+    getOne: catchAsync(async (req: any, res) => ok(res, 'Coupon fetched', await CouponService.getOne(Number(req.params.id), req.user))),
+    updateOne: catchAsync(async (req: any, res) => ok(res, 'Coupon updated', await CouponService.update(Number(req.params.id), req.body, req.user))),
+    remove: catchAsync(async (req: any, res) => {
+        await CouponService.remove(Number(req.params.id), req.user);
+        ok(res, 'Deleted', null);
+    }),
+    validate: catchAsync(async (req: any, res) => ok(res, 'Coupon is valid', await CouponService.validate(req.body.code, req.user.id))),
 };
-
-const getOne = async (req: Request, res: Response) => {
-    const id = Number(req.params.id);
-    const item = await CouponService.getOne(id);
-    res.json(item);
-};
-
-const updateOne = async (req: Request, res: Response) => {
-    const id = Number(req.params.id);
-    const data = { ...(req.body || {}) };
-    const updated = await CouponService.update(id, data);
-    res.json(updated);
-};
-
-const remove = async (req: Request, res: Response) => {
-    const id = Number(req.params.id);
-    await CouponService.remove(id);
-    res.json({ message: 'Deleted' });
-};
-
-export const CouponController = { create, list, getOne, updateOne, remove };

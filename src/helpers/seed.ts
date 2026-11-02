@@ -21,7 +21,7 @@ const seedSuperAdmin = async () => {
             Number(config.salt_round)
         );
 
-        const superAdminData = await prisma.user.create({
+        await prisma.user.create({
             data: {
                 email: config.superAdminEmail as string,
                 name: "Super Admin",
@@ -31,12 +31,10 @@ const seedSuperAdmin = async () => {
             }
         });
 
-        console.log("Super Admin Created Successfully!", superAdminData);
+        console.log("Super Admin Created Successfully!");
     } catch (err) {
         console.error(err);
-    } finally {
-        await prisma.$disconnect();
     }
 };
 
-export default seedSuperAdmin;
+export default seedSuperAdmin;

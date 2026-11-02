@@ -22,7 +22,7 @@ export const aiChatController = async (
     // Limit history to last 10 messages to save tokens
     const recentHistory = history.slice(-10);
 
-    const reply = await runAIAgent(message.trim(), recentHistory);
+    const reply = await runAIAgent(message.trim(), recentHistory, { userId: (req as any).user?.id });
 
     res.json({
       success: true,
@@ -38,4 +38,4 @@ export const aiChatController = async (
       error: "AI সার্ভিসে সমস্যা হয়েছে। একটু পরে আবার চেষ্টা করুন।",
     });
   }
-};
+};

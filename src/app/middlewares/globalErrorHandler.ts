@@ -1,47 +1,45 @@
 import { Prisma } from "@prisma/client";
 import { NextFunction, Request, Response } from "express";
 import httpStatus from "http-status";
-
-// Sanitize error to prevent exposing sensitive information in production
-const sanitizeError = (error: any) => {
-    // Don't expose Prisma errors in production
-    if (process.env.NODE_ENV === "production" && error.code?.startsWith("P")) {
-        return {
-            message: "Database operation failed",
-            errorDetails: null,
-        };
-    }
-    return error;
-};
+import { ZodError } from "zod";
+import ApiError from "../errors/ApiError";
 
 const globalErrorHandler = (err: any, req: Request, res: Response, next: NextFunction) => {
+    let statusCode: number = httpStatus.INTERNAL_SERVER_ERROR;
+    let message: string = err.message || "Something went wrong!";
+    let error: any = undefined;
 
-    console.log({ err });
-
-    let statusCode = httpStatus.INTERNAL_SERVER_ERROR;
-    let success = false;
-    let message = err.message || "Something went wrong!";
-    let error = err;
-
-    if (err instanceof Prisma.PrismaClientValidationError) {
-        message = 'Validation Error';
-        error = err.message
-    }
-    else if (err instanceof Prisma.PrismaClientKnownRequestError) {
-        if (err.code === 'P2002') {
-            message = "Duplicate Key error";
-            error = err.meta;
+    if (err instanceof ApiError) {
+        statusCode = err.statusCode;
+    } else if (err instanceof ZodError) {
+        statusCode = httpStatus.BAD_REQUEST;
+        message = "Validation Error";
+        error = err.issues.map((i) => ({ path: i.path.join("."), message: i.message }));
+    } else if (err instanceof Prisma.PrismaClientValidationError) {
+        statusCode = httpStatus.BAD_REQUEST;
+        message = "Validation Error";
+    } else if (err instanceof Prisma.PrismaClientKnownRequestError) {
+        if (err.code === "P2002") {
+            statusCode = httpStatus.CONFLICT;
+            message = "Duplicate value: this record already exists";
+        } else if (err.code === "P2025") {
+            statusCode = httpStatus.NOT_FOUND;
+            message = "Record not found";
+        } else if (err.code === "P2003") {
+            statusCode = httpStatus.CONFLICT;
+            message = "This record is in use by other records";
+        } else {
+            message = "Database operation failed";
         }
+    } else if (err.name === "MulterError" || err instanceof SyntaxError) {
+        statusCode = httpStatus.BAD_REQUEST;
+    } else if (process.env.NODE_ENV === "production") {
+        message = "Something went wrong!";
     }
 
-    // Sanitize error before sending response
-    const sanitizedError = sanitizeError(error);
+    if (statusCode >= 500) console.error(err);
 
-    res.status(statusCode).json({
-        success,
-        message,
-        error: sanitizedError
-    })
+    res.status(statusCode).json({ success: false, message, error });
 };
 
 export default globalErrorHandler;

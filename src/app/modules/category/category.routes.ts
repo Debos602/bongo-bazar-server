@@ -28,7 +28,6 @@ router.get(
 // Get category by id - accessible to VENDOR and ADMIN
 router.get(
     '/:id',
-    auth(Role.ADMIN, Role.VENDOR, Role.USER),
     categoryController.getCategoryById
 );
 
@@ -37,7 +36,7 @@ router.get(
 // Create category - only ADMIN
 router.post(
     '/',
-    auth(Role.ADMIN),
+    auth(Role.ADMIN, Role.SUPER_ADMIN),
     validateRequest(categoryValidation.create),
     categoryController.createCategory
 );
@@ -45,7 +44,7 @@ router.post(
 // Update category - only ADMIN
 router.patch(
     '/:id',
-    auth(Role.ADMIN),
+    auth(Role.ADMIN, Role.SUPER_ADMIN),
     validateRequest(categoryValidation.update),
     categoryController.updateCategory
 );
@@ -53,7 +52,7 @@ router.patch(
 // Delete category - only ADMIN
 router.delete(
     '/:id',
-    auth(Role.ADMIN),
+    auth(Role.ADMIN, Role.SUPER_ADMIN),
     categoryController.deleteCategory
 );
 

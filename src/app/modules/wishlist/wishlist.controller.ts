@@ -1,34 +1,25 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
+import httpStatus from 'http-status';
+import catchAsync from '../../../shared/catchAsync';
+import sendResponse from '../../../shared/sendResponse';
 import { WishlistService } from './wishlist.service';
 
-const create = async (req: Request, res: Response) => {
-    const data = { ...(req.body || {}) };
-    const created = await WishlistService.create(data);
-    res.json(created);
-};
+const ok = (res: Response, message: string, data: unknown, statusCode: number = httpStatus.OK) =>
+    sendResponse(res, { statusCode, success: true, message, data });
 
-const list = async (_req: Request, res: Response) => {
-    const items = await WishlistService.list();
-    res.json(items);
+export const WishlistController = {
+    create: catchAsync(async (req: any, res) => ok(res, 'Added to wishlist', await WishlistService.add(req.user.id, Number(req.body.productId)), httpStatus.CREATED)),
+    list: catchAsync(async (req: any, res) => ok(res, 'Wishlist fetched', await WishlistService.list(req.user.id))),
+    remove: catchAsync(async (req: any, res) => {
+        await WishlistService.remove(Number(req.params.id), req.user.id);
+        ok(res, 'Deleted', null);
+    }),
+    clear: catchAsync(async (req: any, res) => {
+        await WishlistService.clear(req.user.id);
+        ok(res, 'Wishlist cleared', null);
+    }),
+    removeByProduct: catchAsync(async (req: any, res) => {
+        await WishlistService.removeByProduct(Number(req.params.productId), req.user.id);
+        ok(res, 'Deleted', null);
+    }),
 };
-
-const getOne = async (req: Request, res: Response) => {
-    const id = Number(req.params.id);
-    const item = await WishlistService.getOne(id);
-    res.json(item);
-};
-
-const updateOne = async (req: Request, res: Response) => {
-    const id = Number(req.params.id);
-    const data = { ...(req.body || {}) };
-    const updated = await WishlistService.update(id, data);
-    res.json(updated);
-};
-
-const remove = async (req: Request, res: Response) => {
-    const id = Number(req.params.id);
-    await WishlistService.remove(id);
-    res.json({ message: 'Deleted' });
-};
-
-export const WishlistController = { create, list, getOne, updateOne, remove };

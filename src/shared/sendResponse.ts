@@ -14,9 +14,9 @@ const sendResponse = <T>(res: Response, jsonData: {
     res.status(jsonData.statusCode).json({
         success: jsonData.success,
         message: jsonData.message,
-        meta: jsonData.meta || null || undefined,
-        data: jsonData.data || null || undefined
+        meta: jsonData.meta ?? undefined,
+        data: jsonData.data ?? undefined
     })
 }
 
-export default sendResponse;
+export default sendResponse;

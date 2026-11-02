@@ -1,17 +1,13 @@
-export const productSearchableFields: string[] = [
-    'name',
-    'description',
-    'slug',
-    'sku'
-]; // for search term
+export const productSearchableFields: string[] = ['name', 'description', 'slug', 'sku'];
 
 export const productFilterableFields: string[] = [
-    'name',
-    'description',
-    'slug',
-    'sku',
     'isFeatured',
-    'isPublished',
     'vendorId',
+    'categoryId',
+    'category',
+    'minPrice',
+    'maxPrice',
     'searchTerm'
-]; // for all filtering
+];
+
+export const productSortableFields: string[] = ['createdAt', 'price', 'rating', 'name', 'stock'];

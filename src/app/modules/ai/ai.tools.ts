@@ -135,7 +135,8 @@ export const aiTools = [
 
 export async function executeTool(
   toolName: string,
-  args: Record<string, any>
+  args: Record<string, any>,
+  context?: { userId?: number }
 ): Promise<string> {
   try {
     switch (toolName) {
@@ -144,7 +145,7 @@ export async function executeTool(
 
         const products = await prisma.product.findMany({
           where: {
-            isPublished: true,
+            isPublished: true, isBlocked: false, vendor: { status: "APPROVED" },
             ...(minPrice !== undefined && { price: { gte: minPrice } }),
             ...(maxPrice !== undefined && { price: { lte: maxPrice } }),
             ...(category && {
@@ -216,7 +217,7 @@ export async function executeTool(
                   ],
                 }
               : {}),
-            isPublished: true,
+            isPublished: true, isBlocked: false, vendor: { status: "APPROVED" },
           },
           select: { id: true, name: true, stock: true, price: true },
         });
@@ -247,7 +248,7 @@ export async function executeTool(
           where: {
             ...(productId ? { id: productId } : {}),
             ...(slug ? { slug } : {}),
-            isPublished: true,
+            isPublished: true, isBlocked: false, vendor: { status: "APPROVED" },
           },
           include: {
             categories: { include: { category: true } },
@@ -307,8 +308,12 @@ export async function executeTool(
       case "get_order_status": {
         const { orderId } = args;
 
-        const order = await prisma.order.findUnique({
-          where: { id: orderId },
+        if (!context?.userId) {
+          return JSON.stringify({ message: "অর্ডারের তথ্য দেখতে অনুগ্রহ করে লগইন করুন।" });
+        }
+
+        const order = await prisma.order.findFirst({
+          where: { id: orderId, userId: context.userId },
           include: {
             items: {
               include: {
@@ -348,7 +353,7 @@ export async function executeTool(
 
         // প্রথমে featured খোঁজো
         let products = await prisma.product.findMany({
-          where: { isFeatured: true, isPublished: true },
+          where: { isFeatured: true, isPublished: true, isBlocked: false, vendor: { status: "APPROVED" } },
           include: {
             categories: { include: { category: true } },
             vendor: { select: { shopName: true } },
@@ -360,7 +365,7 @@ export async function executeTool(
         // featured না থাকলে সব published product থেকে latest দেখাও
         if (products.length === 0) {
           products = await prisma.product.findMany({
-            where: { isPublished: true },
+            where: { isPublished: true, isBlocked: false, vendor: { status: "APPROVED" } },
             include: {
               categories: { include: { category: true } },
               vendor: { select: { shopName: true } },

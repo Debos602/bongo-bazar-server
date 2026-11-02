@@ -39,12 +39,13 @@ const MODELS = [
 
 export async function runAIAgent(
   userMessage: string,
-  conversationHistory: ChatMessage[] = []
+  conversationHistory: ChatMessage[] = [],
+  context?: { userId?: number }
 ): Promise<string> {
   
   for (const MODEL of MODELS) {
     try {
-      const result = await callOpenRouter(MODEL, userMessage, conversationHistory);
+      const result = await callOpenRouter(MODEL, userMessage, conversationHistory, context);
       if (result) return result;
     } catch (err: any) {
       // 404 = model নেই, পরেরটা try করো
@@ -63,7 +64,8 @@ export async function runAIAgent(
 async function callOpenRouter(
   model: string,
   userMessage: string,
-  conversationHistory: ChatMessage[]
+  conversationHistory: ChatMessage[],
+  context?: { userId?: number }
 ): Promise<string> {
   const messages = [
     ...conversationHistory.map((m) => ({ role: m.role, content: m.content })),
@@ -146,7 +148,7 @@ async function callOpenRouter(
         const toolName = toolCall.function.name;
         const toolArgs = JSON.parse(toolCall.function.arguments || "{}");
         console.log(`[AI Tool] Calling: ${toolName}`, toolArgs);
-        const result = await executeTool(toolName, toolArgs);
+        const result = await executeTool(toolName, toolArgs, context);
         return {
           role: "tool" as const,
           tool_call_id: toolCall.id,
@@ -159,4 +161,4 @@ async function callOpenRouter(
   }
 
   return "দুঃখিত, এই মুহূর্তে উত্তর দিতে পারছি না।";
-}
+}

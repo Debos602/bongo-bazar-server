@@ -199,7 +199,6 @@ const forgotPassword = catchAsync(async (req: Request, res: Response) => {
 const resetPassword = catchAsync(async (req: Request & { user?: any; }, res: Response) => {
   // Extract token from Authorization header (remove "Bearer " prefix)
   const authHeader = req.headers.authorization;
-  console.log({ authHeader });
   const token = authHeader ? authHeader.replace('Bearer ', '') : null;
   const user = req.user; // Will be populated if authenticated via middleware
 
@@ -214,9 +213,7 @@ const resetPassword = catchAsync(async (req: Request & { user?: any; }, res: Res
 });
 
 const getMe = catchAsync(async (req: Request & { user?: any; }, res: Response) => {
-  const user = req.cookies;
-
-  const result = await AuthServices.getMe(user);
+  const result = await AuthServices.getMe(req.user);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -339,7 +336,15 @@ const register = catchAsync(async (req: Request, res: Response) => {
 
 
 
+const logout = catchAsync(async (req: Request, res: Response) => {
+  const options = { secure: true, httpOnly: true, sameSite: "none" as const };
+  res.clearCookie("accessToken", options);
+  res.clearCookie("refreshToken", options);
+  sendResponse(res, { statusCode: httpStatus.OK, success: true, message: "Logged out", data: null });
+});
+
 export const AuthController = {
+  logout,
   loginUser,
   refreshToken,
   changePassword,

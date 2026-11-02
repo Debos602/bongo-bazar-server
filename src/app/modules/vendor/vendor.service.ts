@@ -1,376 +1,178 @@
+import { Prisma, Role, VendorStatus } from '@prisma/client';
+import httpStatus from 'http-status';
 import prisma from '../../../shared/prisma';
-import { Prisma } from '@prisma/client';
+import { slugify } from '../../../shared/slug';
+import ApiError from '../../errors/ApiError';
+
+// Safe for anyone to see: no owner email or phone.
+const publicSelect = {
+    id: true, shopName: true, slug: true, description: true, logo: true, banner: true,
+    createdAt: true, _count: { select: { products: { where: { isPublished: true, isBlocked: false } } } },
+} satisfies Prisma.VendorSelect;
+
+const ownerSelect = { id: true, email: true, name: true, phone: true, picture: true, role: true, status: true } as const;
+
+const paginated = <T>(data: T[], page: number, limit: number, total: number) => ({
+    data,
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+});
+
+const publicWhere = (query?: string): Prisma.VendorWhereInput => ({
+    status: VendorStatus.APPROVED,
+    ...(query ? { shopName: { contains: query, mode: 'insensitive' as const } } : {}),
+});
 
 export const VendorService = {
-    // Create a new vendor (user becomes vendor) - with transaction
-    create: async (userId: number, shopName: string) => {
-        const existingVendor = await prisma.vendor.findUnique({
-            where: { userId }
-        });
-
-        if (existingVendor) {
-            throw new Error('User is already a vendor');
+    // A customer applies to sell. Role changes only when an admin approves.
+    create: async (userId: number, payload: Prisma.VendorUncheckedCreateInput | any) => {
+        const existing = await prisma.vendor.findUnique({ where: { userId } });
+        if (existing && existing.status !== VendorStatus.REJECTED) {
+            throw new ApiError(httpStatus.CONFLICT, 'You already have a vendor account or a pending application');
         }
-
-        // Use transaction to ensure both vendor creation and user role update happen atomically
-        const vendor = await prisma.$transaction(async (tx) => {
-            // Step 1: Create vendor record
-            const newVendor = await tx.vendor.create({
-                data: {
-                    userId,
-                    shopName
-                }
+        if (existing) {
+            return prisma.vendor.update({
+                where: { id: existing.id },
+                data: { ...payload, status: VendorStatus.PENDING, rejectionReason: null },
             });
-
-            // Step 2: Update user role to VENDOR
-            await tx.user.update({
-                where: { id: userId },
-                data: { role: 'VENDOR' }
-            });
-
-            // Step 3: Fetch vendor with user details
-            const vendorWithUser = await tx.vendor.findUnique({
-                where: { id: newVendor.id },
-                include: {
-                    user: {
-                        select: {
-                            id: true,
-                            email: true,
-                            name: true,
-                            phone: true,
-                            picture: true,
-                            role: true,
-                            status: true
-                        }
-                    }
-                }
-            });
-
-            return vendorWithUser;
+        }
+        return prisma.vendor.create({
+            data: { ...payload, userId, slug: slugify(payload.shopName), status: VendorStatus.PENDING },
         });
-
-        return vendor;
     },
 
-    // Get all vendors with pagination
-    list: async (page: number = 1, limit: number = 10) => {
-        const skip = (page - 1) * limit;
+    list: async (page = 1, limit = 10) => {
+        const where = publicWhere();
+        const [vendors, total] = await Promise.all([
+            prisma.vendor.findMany({ where, skip: (page - 1) * limit, take: limit, select: publicSelect, orderBy: { createdAt: 'desc' } }),
+            prisma.vendor.count({ where }),
+        ]);
+        return paginated(vendors, page, limit, total);
+    },
 
+    search: async (query: string, page = 1, limit = 10) => {
+        const where = publicWhere(query);
+        const [vendors, total] = await Promise.all([
+            prisma.vendor.findMany({ where, skip: (page - 1) * limit, take: limit, select: publicSelect }),
+            prisma.vendor.count({ where }),
+        ]);
+        return paginated(vendors, page, limit, total);
+    },
+
+    adminList: async (status: VendorStatus | undefined, page = 1, limit = 10) => {
+        const where: Prisma.VendorWhereInput = status ? { status } : {};
         const [vendors, total] = await Promise.all([
             prisma.vendor.findMany({
-                skip,
-                take: limit,
-                include: {
-                    user: {
-                        select: {
-                            id: true,
-                            email: true,
-                            name: true,
-                            phone: true,
-                            picture: true,
-                            role: true,
-                            status: true
-                        }
-                    },
-                    products: {
-                        select: {
-                            id: true,
-                            name: true,
-                            price: true,
-                            stock: true
-                        }
-                    }
-                },
-                orderBy: {
-                    createdAt: 'desc'
-                }
+                where, skip: (page - 1) * limit, take: limit, orderBy: { createdAt: 'desc' },
+                include: { user: { select: ownerSelect }, _count: { select: { products: true, vendorOrders: true } } },
             }),
-            prisma.vendor.count()
+            prisma.vendor.count({ where }),
         ]);
-
-        return {
-            data: vendors,
-            pagination: {
-                page,
-                limit,
-                total,
-                totalPages: Math.ceil(total / limit)
-            }
-        };
+        return paginated(vendors, page, limit, total);
     },
 
-    // Get vendor by ID
     getOne: async (id: number) => {
-        const vendor = await prisma.vendor.findUnique({
-            where: { id },
-            include: {
-                user: {
-                    select: {
-                        id: true,
-                        email: true,
-                        name: true,
-                        phone: true,
-                        picture: true,
-                        isVerified: true,
-                        status: true
-                    }
-                },
-                products: {
-                    include: {
-                        categories: {
-                            include: {
-                                category: true
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
-        if (!vendor) {
-            throw new Error('Vendor not found');
-        }
-
+        const vendor = await prisma.vendor.findFirst({ where: { id, status: VendorStatus.APPROVED }, select: publicSelect });
+        if (!vendor) throw new ApiError(httpStatus.NOT_FOUND, 'Vendor not found');
         return vendor;
     },
 
-    // Get vendor by user ID
+    getBySlug: async (slug: string) => {
+        const vendor = await prisma.vendor.findFirst({ where: { slug, status: VendorStatus.APPROVED }, select: publicSelect });
+        if (!vendor) throw new ApiError(httpStatus.NOT_FOUND, 'Vendor not found');
+        return vendor;
+    },
+
     getByUserId: async (userId: number) => {
         const vendor = await prisma.vendor.findUnique({
             where: { userId },
-            include: {
-                user: {
-                    select: {
-                        id: true,
-                        email: true,
-                        name: true,
-                        phone: true,
-                        picture: true,
-                        isVerified: true,
-                        status: true
-                    }
-                },
-                products: {
-                    include: {
-                        categories: {
-                            include: {
-                                category: true
-                            }
-                        }
-                    }
-                }
-            }
+            include: { user: { select: ownerSelect } },
         });
-
-        if (!vendor) {
-            throw new Error('Vendor not found for this user');
-        }
-
+        if (!vendor) throw new ApiError(httpStatus.NOT_FOUND, 'Vendor profile not found');
         return vendor;
     },
 
-    // Update vendor profile
-    update: async (id: number, data: Partial<{ shopName: string; }>) => {
-        const vendor = await prisma.vendor.findUnique({
-            where: { id }
-        });
-
-        if (!vendor) {
-            throw new Error('Vendor not found');
+    // For anything a vendor changes or sells: the shop must be approved.
+    getApprovedByUserId: async (userId: number) => {
+        const vendor = await prisma.vendor.findUnique({ where: { userId } });
+        if (!vendor) throw new ApiError(httpStatus.FORBIDDEN, 'You are not a registered vendor');
+        if (vendor.status !== VendorStatus.APPROVED) {
+            throw new ApiError(httpStatus.FORBIDDEN, `Your shop is ${vendor.status.toLowerCase()}`);
         }
-
-        const updated = await prisma.vendor.update({
-            where: { id },
-            data,
-            include: {
-                user: {
-                    select: {
-                        id: true,
-                        email: true,
-                        name: true,
-                        phone: true,
-                        picture: true,
-                        role: true,
-                        status: true
-                    }
-                }
-            }
-        });
-
-        return updated;
+        return vendor;
     },
 
-    // Get vendor statistics
-    getVendorStats: async (vendorId: number) => {
-        const vendor = await prisma.vendor.findUnique({
-            where: { id: vendorId }
-        });
+    update: async (id: number, data: Prisma.VendorUpdateInput, requester: { id: number; role: Role; }) => {
+        const vendor = await prisma.vendor.findUnique({ where: { id } });
+        if (!vendor) throw new ApiError(httpStatus.NOT_FOUND, 'Vendor not found');
+        if (requester.role === Role.VENDOR && vendor.userId !== requester.id) {
+            throw new ApiError(httpStatus.FORBIDDEN, 'You can only update your own shop');
+        }
+        return prisma.vendor.update({ where: { id }, data });
+    },
 
-        if (!vendor) {
-            throw new Error('Vendor not found');
+    setStatus: async (id: number, status: 'APPROVED' | 'REJECTED' | 'SUSPENDED', reason?: string) => {
+        const vendor = await prisma.vendor.findUnique({ where: { id } });
+        if (!vendor) throw new ApiError(httpStatus.NOT_FOUND, 'Vendor not found');
+
+        return prisma.$transaction(async (tx) => {
+            const updated = await tx.vendor.update({
+                where: { id },
+                data: {
+                    status,
+                    rejectionReason: status === 'APPROVED' ? null : reason ?? null,
+                    approvedAt: status === 'APPROVED' ? new Date() : vendor.approvedAt,
+                },
+            });
+            if (status === 'APPROVED') {
+                await tx.user.update({ where: { id: vendor.userId }, data: { role: Role.VENDOR } });
+            } else if (status === 'REJECTED') {
+                await tx.user.update({ where: { id: vendor.userId }, data: { role: Role.USER } });
+            }
+            return updated;
+        });
+    },
+
+    setCommission: async (id: number, commissionRate: number | null) =>
+        prisma.vendor.update({ where: { id }, data: { commissionRate } }),
+
+    getVendorStats: async (vendorId: number, requester: { id: number; role: Role; }) => {
+        const vendor = await prisma.vendor.findUnique({ where: { id: vendorId } });
+        if (!vendor) throw new ApiError(httpStatus.NOT_FOUND, 'Vendor not found');
+        if (requester.role === Role.VENDOR && vendor.userId !== requester.id) {
+            throw new ApiError(httpStatus.FORBIDDEN, 'Forbidden');
         }
 
-        const [totalProducts, totalOrders, totalRevenue, avgRating] = await Promise.all([
-            prisma.product.count({
-                where: { vendorId }
-            }),
-            prisma.orderItem.count({
-                where: {
-                    product: {
-                        vendorId
-                    }
-                }
-            }),
-            prisma.orderItem.aggregate({
-                where: {
-                    product: {
-                        vendorId
-                    }
-                },
-                _sum: {
-                    price: true
-                }
-            }),
-            prisma.review.aggregate({
-                where: {
-                    product: {
-                        vendorId
-                    }
-                },
-                _avg: {
-                    rating: true
-                }
-            })
+        const [totalProducts, totalOrders, revenue, avgRating] = await Promise.all([
+            prisma.product.count({ where: { vendorId } }),
+            prisma.vendorOrder.count({ where: { vendorId } }),
+            prisma.vendorOrder.aggregate({ where: { vendorId, status: 'DELIVERED' }, _sum: { total: true } }),
+            prisma.review.aggregate({ where: { product: { vendorId } }, _avg: { rating: true } }),
         ]);
 
         return {
             vendorId,
             totalProducts,
             totalOrders,
-            totalRevenue: totalRevenue._sum.price || 0,
-            avgRating: avgRating._avg.rating || 0
+            totalRevenue: revenue._sum.total || 0,
+            avgRating: avgRating._avg.rating || 0,
         };
     },
 
-    // Get vendor products
-    getVendorProducts: async (vendorId: number, page: number = 1, limit: number = 10) => {
-        const skip = (page - 1) * limit;
-
-        const vendor = await prisma.vendor.findUnique({
-            where: { id: vendorId }
-        });
-
-        if (!vendor) {
-            throw new Error('Vendor not found');
-        }
-
+    getVendorProducts: async (vendorId: number, page = 1, limit = 10) => {
+        await VendorService.getOne(vendorId);
+        const where: Prisma.ProductWhereInput = { vendorId, isPublished: true, isBlocked: false };
         const [products, total] = await Promise.all([
             prisma.product.findMany({
-                where: { vendorId },
-                skip,
-                take: limit,
-                include: {
-                    categories: {
-                        include: {
-                            category: true
-                        }
-                    },
-                    reviews: {
-                        select: {
-                            rating: true
-                        }
-                    }
-                },
-                orderBy: {
-                    createdAt: 'desc'
-                }
+                where, skip: (page - 1) * limit, take: limit, orderBy: { createdAt: 'desc' },
+                include: { categories: { include: { category: true } } },
             }),
-            prisma.product.count({
-                where: { vendorId }
-            })
+            prisma.product.count({ where }),
         ]);
-
-        return {
-            data: products,
-            pagination: {
-                page,
-                limit,
-                total,
-                totalPages: Math.ceil(total / limit)
-            }
-        };
+        return paginated(products, page, limit, total);
     },
 
-    // Delete vendor (soft delete by inactivating)
     remove: async (id: number) => {
-        const vendor = await prisma.vendor.findUnique({
-            where: { id }
-        });
-
-        if (!vendor) {
-            throw new Error('Vendor not found');
-        }
-
-        // Mark user as inactive instead of deleting
-        await prisma.user.update({
-            where: { id: vendor.userId },
-            data: { status: 'INACTIVE' }
-        });
-
+        await VendorService.setStatus(id, 'SUSPENDED', 'Deactivated by admin');
         return { message: 'Vendor deactivated successfully' };
     },
-
-    // Search vendors
-    search: async (query: string, page: number = 1, limit: number = 10) => {
-        const skip = (page - 1) * limit;
-
-        const [vendors, total] = await Promise.all([
-            prisma.vendor.findMany({
-                where: {
-                    OR: [
-                        { shopName: { contains: query, mode: 'insensitive' } },
-                        { user: { name: { contains: query, mode: 'insensitive' } } }
-                    ]
-                },
-                skip,
-                take: limit,
-                include: {
-                    user: {
-                        select: {
-                            id: true,
-                            email: true,
-                            name: true,
-                            phone: true,
-                            picture: true,
-                            status: true
-                        }
-                    },
-                    products: {
-                        select: {
-                            id: true,
-                            name: true
-                        }
-                    }
-                }
-            }),
-            prisma.vendor.count({
-                where: {
-                    OR: [
-                        { shopName: { contains: query, mode: 'insensitive' } },
-                        { user: { name: { contains: query, mode: 'insensitive' } } }
-                    ]
-                }
-            })
-        ]);
-
-        return {
-            data: vendors,
-            pagination: {
-                page,
-                limit,
-                total,
-                totalPages: Math.ceil(total / limit)
-            }
-        };
-    }
 };

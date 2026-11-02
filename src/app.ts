@@ -4,6 +4,7 @@ import express, { Application, NextFunction, Request, Response } from 'express';
 import httpStatus from 'http-status';
 import globalErrorHandler from './app/middlewares/globalErrorHandler';
 import router from './app/routes';
+import { stripeWebhook } from './app/modules/payment/payment.routes';
 import config from './config';
 
 const app: Application = express();
@@ -13,6 +14,9 @@ app.use(cors({
     origin: [`${config.frontendUrl}`],
     credentials: true
 }));
+
+// Stripe signs the raw body, so this must stay ahead of express.json()
+app.post('/webhook', express.raw({ type: 'application/json' }), stripeWebhook);
 
 //parser
 app.use(express.json());
@@ -39,4 +43,4 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     });
 });
 
-export default app;
+export default app;

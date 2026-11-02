@@ -2,7 +2,7 @@ import { z } from "zod";
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
-export const RoleEnum = z.enum(["SUPER_ADMIN", "ADMIN", "USER"]);
+export const RoleEnum = z.enum(["SUPER_ADMIN", "ADMIN", "VENDOR", "USER"]);
 export const UserStatusEnum = z.enum(["ACTIVE", "INACTIVE", "BLOCK"]);
 
 // ─── Register ─────────────────────────────────────────────────────────────────
@@ -241,4 +241,4 @@ export const userIdParamSchema = z.object({
         .positive("User ID must be a positive number"),
 });
 
-export type UserIdParam = z.infer<typeof userIdParamSchema>;
+export type UserIdParam = z.infer<typeof userIdParamSchema>;

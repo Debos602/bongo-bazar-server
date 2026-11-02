@@ -19,7 +19,7 @@ const emailSender = async (
     });
 
     const info = await transporter.sendMail({
-        from: '"PH Health Care" <shafayat.ph@gmail.com>', // sender address
+        from: `"Bongo Bazar" <${config.emailSender.email}>`, // sender address
         to: email, // list of receivers
         subject: "Reset Password Link", // Subject line
         //text: "Hello world?", // plain text body
@@ -28,4 +28,4 @@ const emailSender = async (
 
 }
 
-export default emailSender;
+export default emailSender;

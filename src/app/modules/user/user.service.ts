@@ -45,8 +45,6 @@ const createAdmin = async (req: Request): Promise<Omit<User, 'password'>> => {
         picture: req.body.picture ?? null,
     };
 
-    console.log({ userData }, "from service");
-
     const result = await prisma.user.create({
         data: userData,
         select: {
@@ -107,6 +105,9 @@ const getAllFromDB = async (params: any, options: IPaginationOptions) => {
         select: {
             id: true,
             email: true,
+            name: true,
+            phone: true,
+            picture: true,
             role: true,
             needPasswordChange: true,
             status: true,
@@ -125,17 +126,27 @@ const getAllFromDB = async (params: any, options: IPaginationOptions) => {
     };
 };
 
-const changeProfileStatus = async (id: number, status: Role) => {
-    await prisma.user.findUniqueOrThrow({
+const changeProfileStatus = async (
+    id: number,
+    payload: { status: UserStatus; },
+    requester: { id: number; role: Role; }
+) => {
+    const target = await prisma.user.findUniqueOrThrow({
         where: { id }
     });
 
-    const updateUserStatus = await prisma.user.update({
-        where: { id },
-        data: status
-    });
+    if (target.id === requester.id) {
+        throw new ApiError(httpStatus.BAD_REQUEST, "You cannot change your own status");
+    }
+    if (target.role === Role.SUPER_ADMIN || (target.role === Role.ADMIN && requester.role !== Role.SUPER_ADMIN)) {
+        throw new ApiError(httpStatus.FORBIDDEN, "You cannot change the status of this account");
+    }
 
-    return updateUserStatus;
+    return prisma.user.update({
+        where: { id },
+        data: { status: payload.status },
+        select: { id: true, email: true, name: true, role: true, status: true }
+    });
 };
 
 const getMyProfile = async (user: IAuthUser) => {
@@ -191,10 +202,11 @@ const updateMyProfie = async (user: IAuthUser, req: Request) => {
         where: {
             email: userInfo.email
         },
-        data: req.body
+        data: req.body,
+        select: { id: true, name: true, email: true, phone: true, picture: true, role: true, status: true }
     });
 
-    return { ...profileInfo };
+    return profileInfo;
 };
 
 export const userService = {
@@ -203,4 +215,4 @@ export const userService = {
     changeProfileStatus,
     getMyProfile,
     updateMyProfie
-};
+};

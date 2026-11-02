@@ -1,151 +1,103 @@
 import { Request, Response } from 'express';
-import catchAsync from '../../../shared/catchAsync';
-import sendResponse from '../../../shared/sendResponse';
 import httpStatus from 'http-status';
-import { productService } from './product.service';
 import { fileUploader } from '../../../helpers/fileUploader';
-import { VendorService } from '../vendor/vendor.service';
+import catchAsync from '../../../shared/catchAsync';
 import pick from '../../../shared/pick';
+import sendResponse from '../../../shared/sendResponse';
+import { VendorService } from '../vendor/vendor.service';
 import { productFilterableFields } from './product.constant';
+import { productService } from './product.service';
+import { productValidation } from './product.validation';
 
-// Helper to process optional files and attach image urls to payload
+// Upload any attached files and put their URLs on the payload.
 const attachFiles = async (req: Request, data: any) => {
-    const files: Express.Multer.File[] = [];
+    const groups = (req as any).files as Record<string, Express.Multer.File[]> | undefined;
+    if (!groups) return data;
 
-    // Handle single file from upload.single()
-    if ((req as any).file) {
-        files.push((req as any).file);
+    const result = { ...data };
+    for (const file of groups.image ?? []) {
+        result.image = (await fileUploader.uploadBufferToCloudinary(file.buffer, file.originalname)).secure_url;
     }
-
-    // Handle multiple files from upload.fields() - structure: { fieldname: [File, ...] }
-    if ((req as any).files && typeof (req as any).files === 'object') {
-        const filesObj = (req as any).files;
-        for (const fieldName in filesObj) {
-            if (Array.isArray(filesObj[fieldName])) {
-                files.push(...filesObj[fieldName]);
-            }
-        }
+    const uploaded: string[] = [];
+    for (const file of groups.images ?? []) {
+        uploaded.push((await fileUploader.uploadBufferToCloudinary(file.buffer, file.originalname)).secure_url);
     }
-
-    if (!files.length) return data;
-
-    data = { ...(data || {}) };
-    for (const f of files) {
-        const uploadResult: any = f.buffer
-            ? await fileUploader.uploadBufferToCloudinary(f.buffer, f.originalname)
-            : await fileUploader.uploadFilePathToCloudinary(f.path, f.originalname);
-
-        if (f.fieldname === 'image') {
-            data.image = uploadResult.secure_url;
-        } else if (f.fieldname === 'images') {
-            data.images = data.images ? [].concat(data.images, uploadResult.secure_url) : [uploadResult.secure_url];
-        }
+    if (uploaded.length) {
+        const existing = data.images ? [].concat(data.images) : [];
+        result.images = [...existing, ...uploaded];
     }
-
-    return data;
+    return result;
 };
 
-// Helper to parse FormData types (FormData sends everything as strings)
-const parseFormData = (data: any) => {
-    const parsed = { ...data };
+const options = (req: Request) => pick(req.query as any, ['limit', 'page', 'sortBy', 'sortOrder']);
+const filters = (req: Request) => pick(req.query as any, productFilterableFields);
 
-    // Convert numeric strings to numbers
-    if (parsed.price !== undefined && parsed.price !== '') {
-        parsed.price = parseFloat(parsed.price);
-    }
-    if (parsed.oldPrice !== undefined && parsed.oldPrice !== '') {
-        parsed.oldPrice = parseFloat(parsed.oldPrice);
-    }
-    if (parsed.discount !== undefined && parsed.discount !== '') {
-        parsed.discount = parseInt(parsed.discount, 10);
-    }
-    if (parsed.stock !== undefined && parsed.stock !== '') {
-        parsed.stock = parseInt(parsed.stock, 10);
-    }
-
-    // Convert boolean strings to booleans
-    if (parsed.isFeatured !== undefined) {
-        parsed.isFeatured = parsed.isFeatured === 'true' || parsed.isFeatured === true;
-    }
-    if (parsed.isPublished !== undefined) {
-        parsed.isPublished = parsed.isPublished === 'true' || parsed.isPublished === true;
-    }
-
-    // Remove empty image entries from array
-    if (Array.isArray(parsed.images)) {
-        parsed.images = parsed.images.filter((img: string) => img && img.trim());
-    }
-
-    return parsed;
-};
-
-const create = catchAsync(async (req: Request & { user?: any; }, res: Response) => {
-    let data: any = { ...(req.body || {}) };
-    data = await attachFiles(req, data);
-    data = parseFormData(data);
-
-    const userId = req.user?.id;
-    const vendor = await VendorService.getByUserId(userId);
-
+const create = catchAsync(async (req: any, res: Response) => {
+    const vendor = await VendorService.getApprovedByUserId(req.user.id);
+    // Validate before uploading, apart from image, which may arrive as a file.
+    const data = productValidation.create.parse(await attachFiles(req, productValidation.update.parse(req.body)));
     const created = await productService.create(data, vendor.id);
-    sendResponse(res, {
-        statusCode: httpStatus.CREATED,
-        success: true,
-        message: 'Product created',
-        data: created
-    });
+    sendResponse(res, { statusCode: httpStatus.CREATED, success: true, message: 'Product created', data: created });
 });
 
 const list = catchAsync(async (req: Request, res: Response) => {
-    const filters = pick(req.query, productFilterableFields);
-    const options = pick(req.query, ['limit', 'page', 'sortBy', 'sortOrder']);
-
-    const result = await productService.list(filters, options);
-    sendResponse(res, {
-        statusCode: httpStatus.OK,
-        success: true,
-        message: 'Products listed',
-        meta: result.meta,
-        data: result.data
-    });
+    const result = await productService.list(filters(req), options(req));
+    sendResponse(res, { statusCode: httpStatus.OK, success: true, message: 'Products listed', meta: result.meta, data: result.data });
 });
 
-const getOne = catchAsync(async (req: Request, res: Response) => {
-    const id = Number(req.params.id);
-    const item = await productService.getOne(id);
+const listMine = catchAsync(async (req: any, res: Response) => {
+    const result = await productService.listMine(req.user.id, filters(req), options(req));
+    sendResponse(res, { statusCode: httpStatus.OK, success: true, message: 'Your products', meta: result.meta, data: result.data });
+});
+
+const getMine = catchAsync(async (req: any, res: Response) => {
+    const item = await productService.getMine(Number(req.params.id), req.user);
     sendResponse(res, { statusCode: httpStatus.OK, success: true, message: 'Product fetched', data: item });
 });
 
-const updateOne = catchAsync(async (req: Request & { user?: any; }, res: Response) => {
-    const id = Number(req.params.id);
-    console.log("id", id);
-    let data: any = { ...(req.body || {}) };
-    data = await attachFiles(req, data);
-    data = parseFormData(data);
+const adminList = catchAsync(async (req: Request, res: Response) => {
+    const result = await productService.adminList(filters(req), options(req));
+    sendResponse(res, { statusCode: httpStatus.OK, success: true, message: 'All products', meta: result.meta, data: result.data });
+});
 
-    const updated = await productService.update(id, data, { id: req.user?.id, role: req.user?.role });
+const getOne = catchAsync(async (req: Request, res: Response) => {
+    const item = await productService.getOne(Number(req.params.id));
+    sendResponse(res, { statusCode: httpStatus.OK, success: true, message: 'Product fetched', data: item });
+});
+
+const getBySlug = catchAsync(async (req: Request, res: Response) => {
+    const item = await productService.getBySlug(String(req.params.slug));
+    sendResponse(res, { statusCode: httpStatus.OK, success: true, message: 'Product fetched', data: item });
+});
+
+const updateOne = catchAsync(async (req: any, res: Response) => {
+    const data = productValidation.update.parse(await attachFiles(req, productValidation.update.parse(req.body)));
+    const updated = await productService.update(Number(req.params.id), data, req.user);
     sendResponse(res, { statusCode: httpStatus.OK, success: true, message: 'Product updated', data: updated });
 });
 
-const remove = catchAsync(async (_req: Request, res: Response) => {
-    const id = Number((_req as any).params.id);
-    const result = await productService.remove(id);
-    sendResponse(res, { statusCode: httpStatus.OK, success: true, message: 'Product deleted', data: result });
+const moderate = catchAsync(async (req: Request, res: Response) => {
+    const updated = await productService.moderate(Number(req.params.id), req.body);
+    sendResponse(res, { statusCode: httpStatus.OK, success: true, message: 'Product moderated', data: updated });
 });
 
-// Backwards-compatible names used by other modules
+const remove = catchAsync(async (req: any, res: Response) => {
+    const result = await productService.remove(Number(req.params.id), req.user);
+    sendResponse(res, {
+        statusCode: httpStatus.OK,
+        success: true,
+        message: result.deleted ? 'Product deleted' : 'Product has past orders, so it was unpublished instead',
+        data: result,
+    });
+});
+
 export const productController = {
     createProduct: create,
     updateProduct: updateOne,
     deleteProduct: remove,
     getProduct: getOne,
     listProducts: list,
-    // also provide new-style names
-    create,
-    list,
-    getOne,
-    updateOne,
-    remove,
+    create, list, listMine, getMine, adminList, getOne, getBySlug, updateOne, moderate, remove,
 };
 
 export default productController;

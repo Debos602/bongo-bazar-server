@@ -40,7 +40,7 @@ const changeProfileStatus = catchAsync(async (req: Request, res: Response) => {
 
     const { id } = req.params;
     const numericId = Number(id);
-    const result = await userService.changeProfileStatus(numericId, req.body);
+    const result = await userService.changeProfileStatus(numericId, req.body, (req as any).user);
 
     sendResponse(res, {
         statusCode: httpStatus.OK,
@@ -85,4 +85,4 @@ export const userController = {
     changeProfileStatus,
     getMyProfile,
     updateMyProfie
-};
+};

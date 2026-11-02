@@ -1,53 +1,28 @@
 import { Request, Response } from 'express';
+import httpStatus from 'http-status';
 import { fileUploader } from '../../../helpers/fileUploader';
+import catchAsync from '../../../shared/catchAsync';
+import sendResponse from '../../../shared/sendResponse';
 import { PostService } from './post.service';
 
-const create = async (req: Request, res: Response) => {
+const ok = (res: Response, message: string, data: unknown, statusCode: number = httpStatus.OK) =>
+    sendResponse(res, { statusCode, success: true, message, data });
+
+const withThumbnail = async (req: Request) => {
     const data: any = { ...(req.body || {}) };
-    const file: Express.Multer.File | undefined = (req as any).file;
-
-    if (file) {
-        const uploadResult: any = file.buffer
-            ? await fileUploader.uploadBufferToCloudinary(file.buffer, file.originalname)
-            : await fileUploader.uploadFilePathToCloudinary(file.path, file.originalname);
-        data.thumbnail = uploadResult.secure_url;
+    if (req.file) {
+        data.thumbnail = (await fileUploader.uploadBufferToCloudinary(req.file.buffer, req.file.originalname)).secure_url;
     }
-
-    const created = await PostService.create(data);
-    res.json(created);
+    return data;
 };
 
-const list = async (_req: Request, res: Response) => {
-    const items = await PostService.list();
-    res.json(items);
+export const PostController = {
+    create: catchAsync(async (req: any, res) => ok(res, 'Post created', await PostService.create(await withThumbnail(req), req.user), httpStatus.CREATED)),
+    list: catchAsync(async (req, res) => ok(res, 'Posts fetched', await PostService.list())),
+    getOne: catchAsync(async (req, res) => ok(res, 'Post fetched', await PostService.getOne(Number(req.params.id)))),
+    updateOne: catchAsync(async (req: any, res) => ok(res, 'Post updated', await PostService.update(Number(req.params.id), await withThumbnail(req), req.user))),
+    remove: catchAsync(async (req: any, res) => {
+        await PostService.remove(Number(req.params.id), req.user);
+        ok(res, 'Deleted', null);
+    }),
 };
-
-const getOne = async (req: Request, res: Response) => {
-    const id = Number(req.params.id);
-    const item = await PostService.getOne(id);
-    res.json(item);
-};
-
-const updateOne = async (req: Request, res: Response) => {
-    const id = Number(req.params.id);
-    const data: any = { ...(req.body || {}) };
-    const file: Express.Multer.File | undefined = (req as any).file;
-
-    if (file) {
-        const uploadResult: any = file.buffer
-            ? await fileUploader.uploadBufferToCloudinary(file.buffer, file.originalname)
-            : await fileUploader.uploadFilePathToCloudinary(file.path, file.originalname);
-        data.thumbnail = uploadResult.secure_url;
-    }
-
-    const updated = await PostService.update(id, data);
-    res.json(updated);
-};
-
-const remove = async (req: Request, res: Response) => {
-    const id = Number(req.params.id);
-    await PostService.remove(id);
-    res.json({ message: 'Deleted' });
-};
-
-export const PostController = { create, list, getOne, updateOne, remove };

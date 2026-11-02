@@ -28,6 +28,7 @@ router.post(
     auth(
         Role.SUPER_ADMIN,
         Role.ADMIN,
+        Role.VENDOR,
         Role.USER
     ),
     AuthController.changePassword
@@ -44,11 +45,10 @@ router.post(
 
         //user is resetting password without token and logged in newly created admin or doctor
         if (!req.headers.authorization && req.cookies.accessToken) {
-            console.log(req.headers.authorization, "from reset password route guard");
-            console.log(req.cookies.accessToken, "from reset password route guard");
             auth(
                 Role.SUPER_ADMIN,
                 Role.ADMIN,
+                Role.VENDOR,
                 Role.USER
             )(req, res, next);
         } else {
@@ -61,7 +61,10 @@ router.post(
 
 router.get(
     '/me',
+    auth(),
     AuthController.getMe
 );
 
-export const AuthRoutes = router;
+router.post('/logout', AuthController.logout);
+
+export const AuthRoutes = router;

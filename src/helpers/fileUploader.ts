@@ -23,7 +23,7 @@ const uploadMemory = multer({ storage: memoryStorage });
 async function uploadFilePathToCloudinary(filePath: string, originalname?: string) {
   const uploadResult = await cloudinary.uploader.upload(filePath, {
     public_id: `${originalname ?? 'file'}-${Date.now()}`,
-    folder: 'ph-health-care',
+    folder: 'bongo-bazar',
   });
 
   try { fs.unlinkSync(filePath); } catch (e) { /* ignore */ }
@@ -33,7 +33,7 @@ async function uploadFilePathToCloudinary(filePath: string, originalname?: strin
 function uploadBufferToCloudinary(buffer: Buffer, originalname?: string) {
   return new Promise<any>((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
-      { public_id: `${originalname ?? 'file'}-${Date.now()}`, folder: 'ph-health-care' },
+      { public_id: `${originalname ?? 'file'}-${Date.now()}`, folder: 'bongo-bazar' },
       (error, result) => {
         if (error) return reject(error);
         resolve(result);
@@ -61,4 +61,4 @@ export const fileUploader = {
   uploadMemory,
   uploadFilePathToCloudinary,
   uploadBufferToCloudinary,
-};
+};

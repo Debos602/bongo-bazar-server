@@ -36,7 +36,20 @@ model Vendor {
   userId    Int       @unique
   user      User      @relation(fields: [userId], references: [id])
   shopName  String
+  slug      String    @unique
+  description String?
+  logo      String?
+  banner    String?
+  phone     String?
+  address   String?
+  status    VendorStatus @default(PENDING)
+  rejectionReason String?
+  approvedAt DateTime?
+  commissionRate Float?   // null = platform default (PLATFORM_COMMISSION_RATE)
   products  Product[]
+  vendorOrders VendorOrder[]
+  coupons   Coupon[]
+  payouts   Payout[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @default(now()) @updatedAt
@@ -67,6 +80,7 @@ model Product {
 
   isFeatured    Boolean  @default(false)
   isPublished   Boolean  @default(true)
+  isBlocked     Boolean  @default(false) // set by admin moderation; vendor cannot undo
 
   reviews       Review[]
   carts         Cart[]
@@ -134,6 +148,8 @@ model Wishlist {
   product   Product  @relation(fields: [productId], references: [id])
 
   createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
 }
 
 model Address {
@@ -156,11 +172,15 @@ model Order {
   userId      Int
   addressId   Int
 
+  subtotal    Float       @default(0)
+  discount    Float       @default(0)
   total       Float
+  couponCode  String?
   status      OrderStatus @default(PENDING)
 
   payment     Payment?
   items       OrderItem[]
+  vendorOrders VendorOrder[]
 
   user        User     @relation(fields: [userId], references: [id])
   address     Address  @relation(fields: [addressId], references: [id])
@@ -178,8 +198,56 @@ model OrderItem {
   quantity  Int
   price     Float
 
+  vendorOrderId Int?
+
   order     Order   @relation(fields: [orderId], references: [id])
   product   Product @relation(fields: [productId], references: [id])
+  vendorOrder VendorOrder? @relation(fields: [vendorOrderId], references: [id])
+}
+
+// One order is split into one VendorOrder per vendor; each vendor fulfils only its own part.
+model VendorOrder {
+  id        Int         @id @default(autoincrement())
+  orderId   Int
+  vendorId  Int
+  status    OrderStatus @default(PENDING)
+
+  subtotal         Float
+  vendorDiscount   Float @default(0) // from a coupon the vendor issued; vendor pays
+  platformDiscount Float @default(0) // from a platform coupon; platform pays
+  total            Float             // what the customer pays for this part
+  commissionRate   Float @default(0)
+  commissionAmount Float @default(0)
+  vendorEarning    Float @default(0)
+  trackingNumber   String?
+
+  order     Order       @relation(fields: [orderId], references: [id])
+  vendor    Vendor      @relation(fields: [vendorId], references: [id])
+  items     OrderItem[]
+
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @default(now()) @updatedAt
+
+  @@unique([orderId, vendorId])
+  @@index([vendorId, status])
+}
+
+model Payout {
+  id        Int          @id @default(autoincrement())
+  vendorId  Int
+  amount    Float
+  status    PayoutStatus @default(PENDING)
+  method    String
+  accountDetails String
+  note      String?
+  transactionRef String?
+  processedAt DateTime?
+
+  vendor    Vendor       @relation(fields: [vendorId], references: [id])
+
+  createdAt DateTime     @default(now())
+
+  @@index([vendorId, status])
 }
 
 model Payment {
@@ -189,6 +257,8 @@ model Payment {
   method      PaymentMethod
   status      PaymentStatus  @default(PENDING)
   transactionId String?
+  stripeSessionId String?
+  refundedAmount Float       @default(0)
 
   order       Order          @relation(fields: [orderId], references: [id])
 
@@ -201,6 +271,11 @@ model Coupon {
   discount    Int
   expiresAt   DateTime?
   isActive    Boolean  @default(true)
+  usageLimit  Int?
+  usedCount   Int      @default(0)
+
+  vendorId    Int?     // null = platform coupon; set = applies only to that vendor's items
+  vendor      Vendor?  @relation(fields: [vendorId], references: [id])
 
   createdAt   DateTime @default(now())
 }
@@ -227,6 +302,19 @@ enum Role {
   VENDOR
   USER
 } 
+
+enum VendorStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum PayoutStatus {
+  PENDING
+  PAID
+  REJECTED
+}
 
 enum UserStatus {
   ACTIVE
@@ -263,4 +351,4 @@ enum BadgeType {
   SALE
   BESTSELLER
   LIMITED
-}
+}

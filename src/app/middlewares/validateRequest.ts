@@ -1,15 +1,14 @@
 import { NextFunction, Request, Response } from "express";
 import { ZodObject } from "zod";
 
-const validateRequest = (schema: ZodObject) => async (req: Request, res: Response, next: NextFunction) => {
+// Replaces req.body with the parsed value, so unknown fields never reach a service.
+const validateRequest = (schema: ZodObject<any>) => async (req: Request, res: Response, next: NextFunction) => {
     try {
-        await schema.parseAsync({
-            body: req.body
-        })
+        const parsed: any = await schema.parseAsync({ body: req.body });
+        req.body = parsed.body;
         return next();
-    }
-    catch (err) {
-        next(err)
+    } catch (err) {
+        next(err);
     }
 };
 

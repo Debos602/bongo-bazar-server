@@ -1,140 +1,167 @@
-import prisma from '../../../shared/prisma';
 import { Prisma, Role } from '@prisma/client';
-import { paginationHelper } from '../../../helpers/paginationHelper';
-import { IPaginationOptions } from '../../interfaces/pagination';
-import { productSearchableFields } from './product.constant';
-import ApiError from '../../errors/ApiError';
 import httpStatus from 'http-status';
+import { paginationHelper } from '../../../helpers/paginationHelper';
+import prisma from '../../../shared/prisma';
+import { slugify } from '../../../shared/slug';
+import ApiError from '../../errors/ApiError';
+import { IPaginationOptions } from '../../interfaces/pagination';
 import { VendorService } from '../vendor/vendor.service';
+import { productSearchableFields, productSortableFields } from './product.constant';
 
-// Single, consistent product service with intuitive method names.
-export const productService = {
-    // Create product (vendorId optional for admins)
-    async create(data: any, vendorId?: number) {
-        const payload = { ...data };
+const include = {
+    categories: { include: { category: true } },
+    vendor: { select: { id: true, shopName: true, slug: true } },
+} satisfies Prisma.ProductInclude;
 
-        if (vendorId) payload.vendorId = vendorId;
+export const publicProductWhere: Prisma.ProductWhereInput = {
+    isPublished: true,
+    isBlocked: false,
+    vendor: { status: 'APPROVED' },
+};
 
-        const { categories: rawCategories, ...productData } = payload;
+const buildListWhere = (params: any): Prisma.ProductWhereInput => {
+    const { searchTerm, isFeatured, vendorId, categoryId, category, minPrice, maxPrice } = params;
+    const and: Prisma.ProductWhereInput[] = [];
 
-        // Parse categories if it's a JSON string (e.g. from form-data)
-        let categories: number[] | undefined;
-        if (typeof rawCategories === 'string') {
-            try {
-                categories = JSON.parse(rawCategories);
-            } catch {
-                categories = [];
-            }
-        } else {
-            categories = rawCategories;
+    if (searchTerm) {
+        and.push({
+            OR: productSearchableFields.map((field) => ({
+                [field]: { contains: searchTerm, mode: 'insensitive' },
+            })),
+        });
+    }
+    if (isFeatured !== undefined) and.push({ isFeatured: isFeatured === 'true' || isFeatured === true });
+    if (vendorId) and.push({ vendorId: Number(vendorId) });
+    if (categoryId) and.push({ categories: { some: { categoryId: Number(categoryId) } } });
+    if (category) and.push({ categories: { some: { category: { slug: String(category) } } } });
+    if (minPrice || maxPrice) {
+        and.push({
+            price: {
+                ...(minPrice ? { gte: Number(minPrice) } : {}),
+                ...(maxPrice ? { lte: Number(maxPrice) } : {}),
+            },
+        });
+    }
+    return { AND: and };
+};
+
+const runList = async (where: Prisma.ProductWhereInput, options: IPaginationOptions) => {
+    const { page, limit, skip, sortBy, sortOrder } = paginationHelper.calculatePagination(options);
+    const [data, total] = await Promise.all([
+        prisma.product.findMany({
+            where,
+            skip,
+            take: limit,
+            include,
+            orderBy: productSortableFields.includes(sortBy)
+                ? { [sortBy]: sortOrder === 'asc' ? 'asc' : 'desc' }
+                : { createdAt: 'desc' },
+        }),
+        prisma.product.count({ where }),
+    ]);
+    return { meta: { page, limit, total }, data };
+};
+
+const assertCanManage = async (productId: number, requester: { id: number; role: Role; }) => {
+    const product = await prisma.product.findUnique({ where: { id: productId } });
+    if (!product) throw new ApiError(httpStatus.NOT_FOUND, 'Product not found');
+    if (requester.role === Role.VENDOR) {
+        const vendor = await VendorService.getApprovedByUserId(requester.id);
+        if (product.vendorId !== vendor.id) {
+            throw new ApiError(httpStatus.FORBIDDEN, 'You can only manage your own products');
         }
+    }
+    return product;
+};
 
+export const productService = {
+    async create(data: any, vendorId: number) {
+        const { categories, slug, ...productData } = data;
         return prisma.product.create({
             data: {
                 ...productData,
+                images: productData.images ?? [],
+                tags: productData.tags ?? [],
+                slug: slug || slugify(productData.name),
+                vendorId,
                 categories: categories?.length
-                    ? {
-                        create: categories.map((categoryId: number) => ({
-                            category: { connect: { id: categoryId } }
-                        }))
-                    }
-                    : undefined
+                    ? { create: categories.map((categoryId: number) => ({ categoryId })) }
+                    : undefined,
             },
-            include: {
-                categories: { include: { category: true } }
-            }
+            include,
         });
     },
 
-    // Update with basic authorization check (caller must supply their own id/role)
-    async update(id: number, data: Prisma.ProductCreateInput, requester?: { id: number; role: Role; }) {
-        const product = await prisma.product.findUnique({ where: { id } });
-        if (!product) throw new ApiError(httpStatus.NOT_FOUND, 'Product not found');
+    async update(id: number, data: any, requester: { id: number; role: Role; }) {
+        await assertCanManage(id, requester);
+        const { categories, ...productData } = data;
 
-        if (requester) {
-            // Vendor may only update their own products
-            if (requester.role === Role.VENDOR) {
-                // Get vendorId from userId
-                const vendor = await VendorService.getByUserId(requester.id);
-                if (!vendor) {
-                    throw new ApiError(httpStatus.FORBIDDEN, 'You are not a registered vendor');
-                }
-
-                if (product.vendorId !== vendor.id) {
-                    throw new ApiError(
-                        httpStatus.FORBIDDEN,
-                        `Not authorized to update this product. Product belongs to vendor ${product.vendorId}, but you are vendor ${vendor.id}`
-                    );
-                }
+        return prisma.$transaction(async (tx) => {
+            if (categories) {
+                await tx.productCategory.deleteMany({ where: { productId: id } });
+                await tx.productCategory.createMany({
+                    data: categories.map((categoryId: number) => ({ productId: id, categoryId })),
+                });
             }
-            // Admins and super admins allowed
-        }
-
-        return prisma.product.update({ where: { id }, data });
+            return tx.product.update({ where: { id }, data: productData, include });
+        });
     },
 
-    async remove(id: number) {
-        await prisma.product.delete({ where: { id } });
-        return { deleted: true };
+    async moderate(id: number, data: { isBlocked?: boolean; isFeatured?: boolean; }) {
+        return prisma.product.update({ where: { id }, data, include });
+    },
+
+    // A product on past orders has to stay for order history, so it is hidden instead.
+    async remove(id: number, requester: { id: number; role: Role; }) {
+        await assertCanManage(id, requester);
+        const orderCount = await prisma.orderItem.count({ where: { productId: id } });
+
+        return prisma.$transaction(async (tx) => {
+            await tx.cart.deleteMany({ where: { productId: id } });
+            await tx.wishlist.deleteMany({ where: { productId: id } });
+            if (orderCount > 0) {
+                await tx.product.update({ where: { id }, data: { isPublished: false, stock: 0 } });
+                return { deleted: false, unpublished: true };
+            }
+            await tx.review.deleteMany({ where: { productId: id } });
+            await tx.productCategory.deleteMany({ where: { productId: id } });
+            await tx.product.delete({ where: { id } });
+            return { deleted: true, unpublished: false };
+        });
     },
 
     async getOne(id: number) {
-        return prisma.product.findUnique({ where: { id } });
+        const product = await prisma.product.findFirst({ where: { id, ...publicProductWhere }, include });
+        if (!product) throw new ApiError(httpStatus.NOT_FOUND, 'Product not found');
+        return product;
+    },
+
+    async getBySlug(slug: string) {
+        const product = await prisma.product.findFirst({ where: { slug, ...publicProductWhere }, include });
+        if (!product) throw new ApiError(httpStatus.NOT_FOUND, 'Product not found');
+        return product;
     },
 
     async list(params: any = {}, options: IPaginationOptions) {
-        const { page, limit, skip, sortBy, sortOrder } = paginationHelper.calculatePagination(options);
-        const { searchTerm, ...filterData } = params;
+        return runList({ AND: [publicProductWhere, buildListWhere(params)] }, options);
+    },
 
-        const andConditions: Prisma.ProductWhereInput[] = [];
+    async listMine(userId: number, params: any, options: IPaginationOptions) {
+        const vendor = await VendorService.getByUserId(userId);
+        const { vendorId: _ignored, ...rest } = params;
+        return runList({ AND: [{ vendorId: vendor.id }, buildListWhere(rest)] }, options);
+    },
 
-        // Handle search term
-        if (searchTerm) {
-            andConditions.push({
-                OR: productSearchableFields.map(field => ({
-                    [field]: {
-                        contains: searchTerm,
-                        mode: 'insensitive'
-                    }
-                }))
-            });
-        }
+    async getMine(id: number, requester: { id: number; role: Role; }) {
+        await assertCanManage(id, requester);
+        return prisma.product.findUniqueOrThrow({ where: { id }, include });
+    },
 
-        // Handle other filters
-        if (Object.keys(filterData).length > 0) {
-            andConditions.push({
-                AND: Object.keys(filterData).map(key => ({
-                    [key]: {
-                        equals: (filterData as any)[key]
-                    }
-                }))
-            });
-        }
-
-        const whereConditions: Prisma.ProductWhereInput =
-            andConditions.length > 0 ? { AND: andConditions } : {};
-
-        const result = await prisma.product.findMany({
-            where: whereConditions,
-            skip,
-            take: limit,
-            orderBy: sortBy && sortOrder
-                ? { [sortBy]: sortOrder }
-                : { createdAt: 'desc' },
-        });
-
-        const total = await prisma.product.count({
-            where: whereConditions
-        });
-
-        return {
-            meta: { page, limit, total },
-            data: result
-        };
+    async adminList(params: any, options: IPaginationOptions) {
+        return runList(buildListWhere(params), options);
     },
 };
 
-// Backwards-compatible alias used in some older files
 export const ProductService = productService;
 
 export default productService;

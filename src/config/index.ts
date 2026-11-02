@@ -13,6 +13,12 @@ export default {
     salt_round: process.env.SALT_ROUND,
     openRouterApiKey: process.env.OPENROUTER_API_KEY,
     frontendUrl: process.env.FRONTEND_URL,
+    stripeCurrency: (process.env.STRIPE_CURRENCY || 'bdt').toLowerCase(),
+    platformCommissionRate: Number(process.env.PLATFORM_COMMISSION_RATE ?? 10),
+    rateLimit: {
+        windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+        max: Number(process.env.RATE_LIMIT_MAX_REQUESTS) || 1000,
+    },
     jwt: {
         jwt_secret: process.env.JWT_SECRET,
         expires_in: process.env.EXPIRES_IN,
@@ -32,4 +38,4 @@ export default {
         api_secret: process.env.CLOUDINARY_API_SECRET
     }
 
-};
+};
