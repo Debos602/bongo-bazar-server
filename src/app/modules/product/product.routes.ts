@@ -24,7 +24,8 @@ router.get('/admin/all', auth(...admins), productController.adminList);
 
 router.get('/:id', productController.getProduct);
 
-router.post('/', auth(Role.VENDOR), uploads, productController.createProduct);
+// Admins add a product to a shop they name; vendors always add to their own.
+router.post('/', auth(Role.VENDOR, ...admins), uploads, productController.createProduct);
 router.put('/:id', auth(Role.VENDOR, ...admins), uploads, productController.updateProduct);
 router.patch('/:id/moderate', auth(...admins), validateRequest(productValidation.moderate), productController.moderate);
 router.delete('/:id', auth(Role.VENDOR, ...admins), productController.deleteProduct);

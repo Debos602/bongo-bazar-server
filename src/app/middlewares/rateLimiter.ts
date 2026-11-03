@@ -4,7 +4,10 @@ import config from "../../config";
 export const apiLimiter = rateLimit({
     windowMs: config.rateLimit.windowMs,
     max: config.rateLimit.max,
-    message: "Too many requests from this IP, please try again later.",
+    // JSON like every other response, so callers can show the reason.
+    message: { success: false, message: "Too many requests. Please wait a few minutes and try again." },
+    // Local development loads many pages from one address, which would hit the limit quickly.
+    skip: () => config.env !== "production",
     standardHeaders: true,
     legacyHeaders: false,
 });

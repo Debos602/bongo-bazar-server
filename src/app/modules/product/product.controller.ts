@@ -8,6 +8,9 @@ import { VendorService } from '../vendor/vendor.service';
 import { productFilterableFields } from './product.constant';
 import { productService } from './product.service';
 import { productValidation } from './product.validation';
+import { Role } from '@prisma/client';
+
+const CLEARABLE = ['description', 'oldPrice', 'discount', 'sku', 'badgeType'];
 
 // Upload any attached files and put their URLs on the payload.
 const attachFiles = async (req: Request, data: any) => {
@@ -33,7 +36,9 @@ const options = (req: Request) => pick(req.query as any, ['limit', 'page', 'sort
 const filters = (req: Request) => pick(req.query as any, productFilterableFields);
 
 const create = catchAsync(async (req: any, res: Response) => {
-    const vendor = await VendorService.getApprovedByUserId(req.user.id);
+    const vendor = req.user.role === Role.VENDOR
+        ? await VendorService.getApprovedByUserId(req.user.id)
+        : await productService.getShopForAdmin(req.body?.vendorId);
     // Validate before uploading, apart from image, which may arrive as a file.
     const data = productValidation.create.parse(await attachFiles(req, productValidation.update.parse(req.body)));
     const created = await productService.create(data, vendor.id);
@@ -71,7 +76,12 @@ const getBySlug = catchAsync(async (req: Request, res: Response) => {
 });
 
 const updateOne = catchAsync(async (req: any, res: Response) => {
-    const data = productValidation.update.parse(await attachFiles(req, productValidation.update.parse(req.body)));
+    const data: any = productValidation.update.parse(await attachFiles(req, productValidation.update.parse(req.body)));
+    // A field the form sent empty means "clear it".
+    for (const key of CLEARABLE) {
+        if (req.body?.[key] === '') data[key] = null;
+    }
+    if (req.body?.tags === '') data.tags = [];
     const updated = await productService.update(Number(req.params.id), data, req.user);
     sendResponse(res, { statusCode: httpStatus.OK, success: true, message: 'Product updated', data: updated });
 });

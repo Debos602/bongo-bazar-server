@@ -358,6 +358,23 @@ const main = async () => {
     check('suspended vendor cannot add', (await call('POST', '/product', v1.token, { name: 'y', price: 1, image: 'i' })).status === 403);
     check('cart with suspended shop cannot check out', (await call('POST', '/order/with-address', c1.token, address)).status === 400);
 
+    // Product CRUD
+    await prisma.vendor.update({ where: { id: appV2.data.id }, data: { status: 'APPROVED' } });
+    check('customer cannot create products', (await call('POST', '/product', c1.token, { name: 'n', price: 1, image: 'i', vendorId: appV2.data.id })).status === 403);
+    check('admin must choose a shop', (await call('POST', '/product', admin, { name: 'n', price: 1, image: 'i' })).status === 400);
+    check('admin cannot use an unapproved shop', (await call('POST', '/product', admin, { name: 'n', price: 1, image: 'i', vendorId: appV1.data.id })).status === 400);
+    const ap = await call('POST', '/product', admin, { name: 'Admin Added', price: 900, oldPrice: 1200, discount: 25, description: 'd', sku: 'S1', badgeType: 'NEW', tags: 'a,b', image: 'https://x/a.jpg', stock: 3, vendorId: appV2.data.id });
+    check('admin creates for a shop', ap.status === 201 && ap.data.vendorId === appV2.data.id, ap.json);
+    check('owner can read it to edit', (await call('GET', `/product/manage/${ap.data.id}`, v2.token)).status === 200);
+    check('another vendor cannot read it to edit', (await prisma.vendor.update({ where: { id: appV1.data.id }, data: { status: 'APPROVED' } }), (await call('GET', `/product/manage/${ap.data.id}`, v1.token)).status === 403));
+    await prisma.vendor.update({ where: { id: appV1.data.id }, data: { status: 'SUSPENDED' } });
+    const cleared = await call('PUT', `/product/${ap.data.id}`, admin, { name: 'Renamed', oldPrice: '', discount: '', description: '', sku: '', badgeType: '', tags: '' });
+    check('admin edits and clears optional fields', cleared.data?.name === 'Renamed' && cleared.data.oldPrice === null && cleared.data.discount === null && cleared.data.description === null && cleared.data.sku === null && cleared.data.badgeType === null && cleared.data.tags.length === 0 && cleared.data.price === 900, cleared.json);
+    check('required field cannot be blanked', (await call('PUT', `/product/${ap.data.id}`, v2.token, { name: '' })).status === 400);
+    const hid = await call('PUT', `/product/${ap.data.id}`, v2.token, { isPublished: false });
+    check('quick unpublish hides it', hid.data?.isPublished === false && (await call('GET', `/product/${ap.data.id}`)).status === 404);
+    check('deleted when it has no orders', (await call('DELETE', `/product/${ap.data.id}`, v2.token)).data?.deleted === true && (await call('GET', `/product/manage/${ap.data.id}`, admin)).status === 404);
+
     // Delete rules
     check('product on orders is unpublished, not deleted', (await call('DELETE', `/product/${p2.data.id}`, admin)).data?.unpublished === true);
     check('active order cannot be deleted', (await call('DELETE', `/order/${vcOrder.data.id}`, admin)).status === 400);

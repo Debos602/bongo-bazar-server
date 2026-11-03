@@ -93,6 +93,15 @@ export const productService = {
         });
     },
 
+    async getShopForAdmin(vendorId: unknown) {
+        const id = Number(vendorId);
+        if (!Number.isInteger(id) || id <= 0) throw new ApiError(httpStatus.BAD_REQUEST, 'Choose a shop for this product');
+        const vendor = await prisma.vendor.findUnique({ where: { id } });
+        if (!vendor) throw new ApiError(httpStatus.NOT_FOUND, 'Shop not found');
+        if (vendor.status !== 'APPROVED') throw new ApiError(httpStatus.BAD_REQUEST, 'This shop is not approved');
+        return vendor;
+    },
+
     async update(id: number, data: any, requester: { id: number; role: Role; }) {
         await assertCanManage(id, requester);
         const { categories, ...productData } = data;

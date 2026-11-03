@@ -8,3 +8,7 @@ dist/
 .vercel
 
 render.yaml
+
+# Working files from npm run images:fill
+product-image-plan.json
+product-image-preview.html
