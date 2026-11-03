@@ -44,8 +44,11 @@ const getAllCategories = async (options: IPaginationOptions) => {
             ? { [options.sortBy]: options.sortOrder }
             : { id: "asc" },
         include: {
+            _count: { select: { products: { where: { product: { isPublished: true, isBlocked: false, vendor: { status: "APPROVED" } } } } } },
+            // A preview only: this list loads on every page, and the full list is at /category/slug/:slug.
             products: {
                 where: { product: { isPublished: true, isBlocked: false, vendor: { status: "APPROVED" } } },
+                take: 12,
                 select: {
                     product: {
                         select: {

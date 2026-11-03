@@ -5,6 +5,7 @@ import prisma from '../../../shared/prisma';
 import { slugify } from '../../../shared/slug';
 import ApiError from '../../errors/ApiError';
 import { IPaginationOptions } from '../../interfaces/pagination';
+import { notify } from '../notification/notification.service';
 import { VendorService } from '../vendor/vendor.service';
 import { productSearchableFields, productSortableFields } from './product.constant';
 
@@ -108,15 +109,28 @@ export const productService = {
     },
 
     async moderate(id: number, data: { isBlocked?: boolean; isFeatured?: boolean; }) {
-        return prisma.product.update({ where: { id }, data, include });
+        return prisma.$transaction(async (tx) => {
+            const before = await tx.product.findUnique({ where: { id }, select: { isBlocked: true, name: true, vendor: { select: { userId: true } } } });
+            if (!before) throw new ApiError(httpStatus.NOT_FOUND, 'Product not found');
+            const product = await tx.product.update({ where: { id }, data, include });
+            if (data.isBlocked !== undefined && data.isBlocked !== before.isBlocked) {
+                await notify(tx, {
+                    userId: before.vendor.userId,
+                    title: data.isBlocked ? 'A product was blocked by an admin' : 'A product was unblocked',
+                    body: before.name,
+                    link: `/dashboard/vendor/products/${id}`,
+                });
+            }
+            return product;
+        });
     },
 
     // A product on past orders has to stay for order history, so it is hidden instead.
     async remove(id: number, requester: { id: number; role: Role; }) {
         await assertCanManage(id, requester);
-        const orderCount = await prisma.orderItem.count({ where: { productId: id } });
 
         return prisma.$transaction(async (tx) => {
+            const orderCount = await tx.orderItem.count({ where: { productId: id } });
             await tx.cart.deleteMany({ where: { productId: id } });
             await tx.wishlist.deleteMany({ where: { productId: id } });
             if (orderCount > 0) {

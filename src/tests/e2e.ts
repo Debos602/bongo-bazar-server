@@ -59,7 +59,14 @@ const main = async () => {
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 
     const refunds: any[] = [];
-    (stripe.checkout.sessions as any).create = async (p: any) => ({ id: `cs_${p.metadata.orderId}_${Date.now()}`, url: 'https://stripe.test/pay' });
+    const sessions = new Map<string, any>();
+    (stripe.checkout.sessions as any).create = async (p: any) => {
+        const s = { id: `cs_${p.metadata.orderId}_${sessions.size}`, url: 'https://stripe.test/pay', status: 'open', amount_total: p.line_items[0].price_data.unit_amount };
+        sessions.set(s.id, s);
+        return s;
+    };
+    (stripe.checkout.sessions as any).retrieve = async (id: string) => sessions.get(id);
+    (stripe.checkout.sessions as any).expire = async (id: string) => { sessions.get(id).status = 'expired'; };
     (stripe.refunds as any).create = async (p: any) => { refunds.push(p); return { id: 're_1' }; };
 
     const admin = await login(config.superAdminEmail as string, config.superAdminPassword as string);
@@ -88,7 +95,11 @@ const main = async () => {
     check('pending vendor cannot add products', (await call('POST', '/product', v1.token, { name: 'x', price: 1, image: 'i' })).status === 403);
     check('pending shop is hidden publicly', (await call('GET', `/vendor/${appV1.data.id}`)).status === 404);
     check('customer cannot approve vendors', (await call('PATCH', `/vendor/${appV1.data.id}/status`, c1.token, { status: 'APPROVED' })).status === 403);
+    const listed = (await call('GET', `/user?searchTerm=${encodeURIComponent(v1.email)}`, admin)).data?.[0];
+    check('users list shows the application', listed?.vendor?.status === 'PENDING' && listed?.role === 'USER', listed);
     check('admin approves', (await call('PATCH', `/vendor/${appV1.data.id}/status`, admin, { status: 'APPROVED' })).data?.status === 'APPROVED');
+    check('approval makes the user a vendor', (await call('GET', '/auth/me', v1.token)).data?.role === 'VENDOR');
+    check('running shop cannot be rejected', (await call('PATCH', `/vendor/${appV1.data.id}/status`, admin, { status: 'REJECTED' })).status === 400);
     await call('PATCH', `/vendor/${appV2.data.id}/status`, admin, { status: 'APPROVED' });
     check('approved vendor has access with the same token', (await call('GET', '/dashboard/vendor', v1.token)).status === 200);
     check('admin sets commission', (await call('PATCH', `/vendor/${appV2.data.id}/commission`, admin, { commissionRate: 20 })).data?.commissionRate === 20);
@@ -271,6 +282,74 @@ const main = async () => {
     check('admin cannot block self path guarded', (await call('PATCH', `/user/${c2Id}/status`, c1.token, { status: 'BLOCK' })).status === 403);
     check('block user', (await call('PATCH', `/user/${c2Id}/status`, admin, { status: 'BLOCK' })).data?.status === 'BLOCK');
     check('blocked user is locked out immediately', (await call('GET', '/cart', c2.token)).status === 403);
+
+
+    // Notifications
+    const unread = async (t: string) => (await call('GET', '/notification/unread-count', t)).data?.unread;
+    const adminNotes = (await call('GET', '/notification?limit=50', admin)).data;
+    check('admin told about applications and payouts', adminNotes.items.some((n: any) => n.title === 'New seller application') && adminNotes.items.some((n: any) => n.title === 'New payout request'));
+    const v1Notes = (await call('GET', '/notification?limit=50', v1.token)).data;
+    check('vendor told about approval, orders, reviews, payout', ['is approved', 'New order', 'star review', 'was sent'].every((t) => v1Notes.items.some((n: any) => n.title.includes(t))), v1Notes.items.map((n: any) => n.title));
+    const c1Notes = (await call('GET', '/notification?limit=50', c1.token)).data;
+    check('customer told about shipping with tracking', c1Notes.items.some((n: any) => n.title.includes('has shipped') && n.body.includes('TRK1')), c1Notes.items.map((n: any) => n.title));
+    check('vendor told when customer cancels', (await call('GET', '/notification?limit=50', v2.token)).data.items.some((n: any) => n.body === 'Cancelled by the customer'));
+    const firstNote = c1Notes.items[0];
+    check("cannot mark someone else's notification", (await call('PATCH', `/notification/${firstNote.id}/read`, v1.token)).status === 404);
+    const beforeRead = await unread(c1.token);
+    check('mark one read', (await call('PATCH', `/notification/${firstNote.id}/read`, c1.token)).status === 200 && (await unread(c1.token)) === beforeRead - 1);
+    await call('PATCH', '/notification/read-all', c1.token);
+    check('mark all read', (await unread(c1.token)) === 0);
+    check('guest gets no notifications', (await call('GET', '/notification')).status === 401);
+
+    // Stats
+    check('periods on dashboards', dashAdmin.periods.today.sales > 0 && dashAdmin.periods.thisMonth.orders > 0 && dashVendor.periods.thisMonth.sales > 0, dashAdmin?.periods);
+    check('growth is null with nothing to compare', dashVendor.periods.thisMonth.growthPct === null);
+
+    // Payment edge cases
+    await prisma.product.update({ where: { id: p1.data.id }, data: { stock: 20 } });
+    await prisma.product.update({ where: { id: p2.data.id }, data: { stock: 20, isPublished: true } });
+    const c3 = await register('thirdbuyer');
+    const a3 = await call('POST', '/address', c3.token, address);
+    const couponX = `ONCE${stamp}`;
+    await call('POST', '/coupon', admin, { code: couponX, discount: 10, usageLimit: 1 });
+    const o1 = await call('POST', '/order/direct', c3.token, { addressId: a3.data.id, productId: p1.data.id, quantity: 1, couponCode: couponX });
+    check('coupon used', (await prisma.coupon.findUnique({ where: { code: couponX } }))?.usedCount === 1, o1.json);
+    const s1 = await call('POST', `/payment/${o1.data.id}`, c3.token, { method: 'STRIPE' });
+    const s1b = await call('POST', `/payment/${o1.data.id}`, c3.token, { method: 'STRIPE' });
+    check('double click reuses the card page', s1.data.payment.stripeSessionId === s1b.data.payment.stripeSessionId);
+    await call('POST', `/order/${o1.data.id}/cancel`, c3.token);
+    check('cancelled order returns coupon use', (await prisma.coupon.findUnique({ where: { code: couponX } }))?.usedCount === 0);
+    refunds.length = 0;
+    const late = { id: s1.data.payment.stripeSessionId, payment_status: 'paid', payment_intent: 'pi_late', amount_total: 90000 };
+    await signedEvent('checkout.session.completed', late);
+    check('paying after cancel is fully refunded', refunds.length === 1 && refunds[0].amount === 90000, refunds);
+    check('late payment marked refunded', (await call('GET', `/order/${o1.data.id}`, c3.token)).data.payment.status === 'REFUNDED');
+    await signedEvent('checkout.session.completed', late);
+    check('repeated webhook does not refund twice', refunds.length === 1, refunds);
+
+    await call('POST', '/cart', c3.token, { productId: p1.data.id, quantity: 1 });
+    await call('POST', '/cart', c3.token, { productId: p2.data.id, quantity: 1 });
+    const o2 = await call('POST', '/order/with-address', c3.token, address);
+    const s2 = await call('POST', `/payment/${o2.data.id}`, c3.token, { method: 'STRIPE' });
+    check('card charges full order', sessions.get(s2.data.payment.stripeSessionId).amount_total === 150000, o2.json);
+    const part2b = o2.data.vendorOrders.find((p: any) => p.vendorId === appV2.data.id);
+    await call('PATCH', `/order/vendor/${part2b.id}/status`, v2.token, { status: 'CANCELLED' });
+    const s2b = await call('POST', `/payment/${o2.data.id}`, c3.token, { method: 'STRIPE' });
+    check('card page is replaced after a part is cancelled', s2b.data.payment.stripeSessionId !== s2.data.payment.stripeSessionId && sessions.get(s2b.data.payment.stripeSessionId).amount_total === 100000);
+    refunds.length = 0;
+    await signedEvent('checkout.session.completed', { id: s2.data.payment.stripeSessionId, payment_status: 'paid', payment_intent: 'pi_old', amount_total: 150000 });
+    check('old replaced page is ignored', refunds.length === 0);
+    await signedEvent('checkout.session.completed', { id: s2b.data.payment.stripeSessionId, payment_status: 'paid', payment_intent: 'pi_ok', amount_total: 100000 });
+    check('correct amount: no refund, paid', refunds.length === 0 && (await call('GET', `/order/${o2.data.id}`, c3.token)).data.payment.status === 'PAID');
+
+    const o3 = await call('POST', '/order/direct', c3.token, { addressId: a3.data.id, productId: p2.data.id, quantity: 1 });
+    const s3 = await call('POST', `/payment/${o3.data.id}`, c3.token, { method: 'STRIPE' });
+    await call('POST', `/payment/${o3.data.id}`, c3.token, { method: 'CASH_ON_DELIVERY' });
+    check('switching to cash closes the card page', sessions.get(s3.data.payment.stripeSessionId).status === 'expired');
+
+    // Category list stays light
+    const catList = (await call('GET', `/category?limit=100`)).data.find((c: any) => c.slug === `crafts-${stamp}`);
+    check('category list has a count', typeof catList?._count?.products === 'number', catList);
 
     // Suspended vendor: hidden, cannot sell, cannot be bought from
     await call('POST', '/cart', c1.token, { productId: p1.data.id, quantity: 1 });

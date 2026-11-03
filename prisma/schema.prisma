@@ -29,6 +29,12 @@ model User {
   wishlist   Wishlist[]
   addresses  Address[]
   vendor     Vendor?    // যদি ইউজার ভেন্ডার হয়, Vendor info থাকবে
+
+  notifications Notification[]
+  
+  @@index([role, createdAt])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model Vendor {
@@ -53,6 +59,8 @@ model Vendor {
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @default(now()) @updatedAt
+
+  @@index([status, createdAt])
 }
 
 model Product {
@@ -92,6 +100,11 @@ model Product {
 
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  @@index([isPublished, isBlocked, createdAt])
+  @@index([vendorId, createdAt])
+  @@index([rating])
+  @@index([price])
 }
 
 model Category {
@@ -110,6 +123,8 @@ model ProductCategory {
   category   Category @relation(fields: [categoryId], references: [id])
 
   @@id([productId, categoryId])
+
+  @@index([categoryId])
 }
 
 model Review {
@@ -124,6 +139,9 @@ model Review {
   product   Product  @relation(fields: [productId], references: [id])
 
   createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+  @@index([productId, createdAt])
 }
 
 model Cart {
@@ -137,6 +155,8 @@ model Cart {
 
   createdAt DateTime @default(now())
     @@unique([userId, productId])
+
+  @@index([productId])
 }
 
 model Wishlist {
@@ -150,6 +170,8 @@ model Wishlist {
   createdAt DateTime @default(now())
 
   @@unique([userId, productId])
+
+  @@index([productId])
 }
 
 model Address {
@@ -165,6 +187,8 @@ model Address {
 
   user      User     @relation(fields: [userId], references: [id])
   orders    Order[]
+
+  @@index([userId])
 }
 
 model Order {
@@ -187,6 +211,11 @@ model Order {
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @default(now()) @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([createdAt])
+  @@index([addressId])
 }
 
 model OrderItem {
@@ -203,6 +232,10 @@ model OrderItem {
   order     Order   @relation(fields: [orderId], references: [id])
   product   Product @relation(fields: [productId], references: [id])
   vendorOrder VendorOrder? @relation(fields: [vendorOrderId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+  @@index([vendorOrderId])
 }
 
 // One order is split into one VendorOrder per vendor; each vendor fulfils only its own part.
@@ -230,6 +263,9 @@ model VendorOrder {
 
   @@unique([orderId, vendorId])
   @@index([vendorId, status])
+
+  @@index([vendorId, createdAt])
+  @@index([status, createdAt])
 }
 
 model Payout {
@@ -248,6 +284,8 @@ model Payout {
   createdAt DateTime     @default(now())
 
   @@index([vendorId, status])
+
+  @@index([status, createdAt])
 }
 
 model Payment {
@@ -263,6 +301,8 @@ model Payment {
   order       Order          @relation(fields: [orderId], references: [id])
 
   createdAt   DateTime       @default(now())
+
+  @@index([stripeSessionId])
 }
 
 model Coupon {
@@ -278,6 +318,8 @@ model Coupon {
   vendor      Vendor?  @relation(fields: [vendorId], references: [id])
 
   createdAt   DateTime @default(now())
+
+  @@index([vendorId])
 }
 
 model Post {
@@ -294,6 +336,24 @@ model Post {
 
   createdAt  DateTime @default(now())
   updatedAt  DateTime @default(now()) @updatedAt
+
+  @@index([authorId])
+  @@index([createdAt])
+}
+
+model Notification {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  title     String
+  body      String?
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
 }
 
 enum Role {
@@ -351,4 +411,4 @@ enum BadgeType {
   SALE
   BESTSELLER
   LIMITED
-}
+}

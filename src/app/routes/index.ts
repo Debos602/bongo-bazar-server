@@ -16,6 +16,7 @@ import { AIRoutes } from '../modules/ai/ai.routes';
 import { PaymentRoutes } from '../modules/payment/payment.routes';
 import { PayoutRoutes } from '../modules/payout/payout.routes';
 import { DashboardRoutes } from '../modules/dashboard/dashboard.routes';
+import { NotificationRoutes } from '../modules/notification/notification.routes';
 
 
 const router = express.Router();
@@ -89,10 +90,14 @@ const moduleRoutes = [
     {
         path: '/dashboard',
         route: DashboardRoutes
+    },
+    {
+        path: '/notification',
+        route: NotificationRoutes
     }
    
 ];
 
 moduleRoutes.forEach(route => router.use(route.path, route.route));
 
-export default router;
+export default router;

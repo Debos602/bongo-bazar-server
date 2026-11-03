@@ -113,6 +113,7 @@ const getAllFromDB = async (params: any, options: IPaginationOptions) => {
             status: true,
             createdAt: true,
             updatedAt: true,
+            vendor: { select: { id: true, shopName: true, status: true } },
         }
     });
 

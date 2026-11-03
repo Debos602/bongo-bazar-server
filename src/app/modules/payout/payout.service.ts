@@ -3,6 +3,7 @@ import httpStatus from 'http-status';
 import { roundMoney } from '../../../shared/money';
 import prisma from '../../../shared/prisma';
 import ApiError from '../../errors/ApiError';
+import { notify, notifyAdmins } from '../notification/notification.service';
 import { VendorService } from '../vendor/vendor.service';
 
 // Earned on delivered orders, minus what is paid out or waiting to be.
@@ -41,7 +42,13 @@ export const PayoutService = {
             if (data.amount > balance.available) {
                 throw new ApiError(httpStatus.BAD_REQUEST, `You can withdraw up to ${balance.available}`);
             }
-            return tx.payout.create({ data: { ...data, vendorId: vendor.id } });
+            const payout = await tx.payout.create({ data: { ...data, vendorId: vendor.id } });
+            await notifyAdmins(tx, {
+                title: 'New payout request',
+                body: `${vendor.shopName} asked for ৳ ${data.amount}`,
+                link: '/dashboard/admin/payouts?status=PENDING',
+            });
+            return payout;
         });
     },
 
@@ -61,11 +68,21 @@ export const PayoutService = {
     },
 
     process: async (id: number, data: { status: 'PAID' | 'REJECTED'; transactionRef?: string; note?: string; }) => {
-        const { count } = await prisma.payout.updateMany({
-            where: { id, status: PayoutStatus.PENDING },
-            data: { ...data, processedAt: new Date() },
+        return prisma.$transaction(async (tx) => {
+            const { count } = await tx.payout.updateMany({
+                where: { id, status: PayoutStatus.PENDING },
+                data: { ...data, processedAt: new Date() },
+            });
+            if (!count) throw new ApiError(httpStatus.BAD_REQUEST, 'This payout is not pending');
+            const payout = await tx.payout.findUniqueOrThrow({ where: { id }, include: { vendor: { select: { userId: true } } } });
+            await notify(tx, {
+                userId: payout.vendor.userId,
+                title: data.status === 'PAID' ? `Your payout of ৳ ${payout.amount} was sent` : `Your payout of ৳ ${payout.amount} was rejected`,
+                body: data.status === 'PAID' ? (data.transactionRef ? `Reference ${data.transactionRef}` : undefined) : data.note,
+                link: '/dashboard/vendor/payouts',
+            });
+            const { vendor: _vendor, ...result } = payout;
+            return result;
         });
-        if (!count) throw new ApiError(httpStatus.BAD_REQUEST, 'This payout is not pending');
-        return prisma.payout.findUniqueOrThrow({ where: { id } });
     },
 };

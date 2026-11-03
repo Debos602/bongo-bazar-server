@@ -28,6 +28,9 @@ const globalErrorHandler = (err: any, req: Request, res: Response, next: NextFun
         } else if (err.code === "P2003") {
             statusCode = httpStatus.CONFLICT;
             message = "This record is in use by other records";
+        } else if (err.code === "P2028" || err.code === "P1001" || err.code === "P1002") {
+            statusCode = httpStatus.SERVICE_UNAVAILABLE;
+            message = "The database is responding slowly. Nothing was saved, so please try again.";
         } else {
             message = "Database operation failed";
         }

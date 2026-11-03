@@ -3,6 +3,7 @@ import httpStatus from 'http-status';
 import prisma from '../../../shared/prisma';
 import { roundMoney } from '../../../shared/money';
 import ApiError from '../../errors/ApiError';
+import { notify } from '../notification/notification.service';
 import { VendorService } from '../vendor/vendor.service';
 
 const reviewer = { select: { id: true, name: true, picture: true } };
@@ -29,6 +30,16 @@ export const ReviewService = {
         return prisma.$transaction(async (tx) => {
             const review = await tx.review.create({ data: { ...data, userId } });
             await refreshRating(tx, data.productId);
+            const product = await tx.product.findUniqueOrThrow({
+                where: { id: data.productId },
+                select: { name: true, vendor: { select: { userId: true } } },
+            });
+            await notify(tx, {
+                userId: product.vendor.userId,
+                title: `New ${data.rating}-star review`,
+                body: product.name,
+                link: '/dashboard/vendor/reviews',
+            });
             return review;
         });
     },

@@ -13,6 +13,12 @@ const adapter = new PrismaPg(pool as unknown as any);
 
 const prisma = new PrismaClient({
     adapter,
+    // Applies to every $transaction. The default 5 seconds is too short for a remote
+    // serverless database, which can take seconds to wake up or answer.
+    transactionOptions: {
+        maxWait: 15000,
+        timeout: 45000,
+    },
     log: [
         {
             emit: 'event',
@@ -55,4 +61,4 @@ const prisma = new PrismaClient({
 //     console.log(e)
 // })
 
-export default prisma;
+export default prisma;

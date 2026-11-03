@@ -3,6 +3,7 @@ import httpStatus from 'http-status';
 import prisma from '../../../shared/prisma';
 import { slugify } from '../../../shared/slug';
 import ApiError from '../../errors/ApiError';
+import { notify, notifyAdmins } from '../notification/notification.service';
 
 // Safe for anyone to see: no owner email or phone.
 const publicSelect = {
@@ -29,14 +30,21 @@ export const VendorService = {
         if (existing && existing.status !== VendorStatus.REJECTED) {
             throw new ApiError(httpStatus.CONFLICT, 'You already have a vendor account or a pending application');
         }
-        if (existing) {
-            return prisma.vendor.update({
-                where: { id: existing.id },
-                data: { ...payload, status: VendorStatus.PENDING, rejectionReason: null },
+        return prisma.$transaction(async (tx) => {
+            const vendor = existing
+                ? await tx.vendor.update({
+                    where: { id: existing.id },
+                    data: { ...payload, status: VendorStatus.PENDING, rejectionReason: null },
+                })
+                : await tx.vendor.create({
+                    data: { ...payload, userId, slug: slugify(payload.shopName), status: VendorStatus.PENDING },
+                });
+            await notifyAdmins(tx, {
+                title: 'New seller application',
+                body: vendor.shopName,
+                link: '/dashboard/admin/vendors?status=PENDING',
             });
-        }
-        return prisma.vendor.create({
-            data: { ...payload, userId, slug: slugify(payload.shopName), status: VendorStatus.PENDING },
+            return vendor;
         });
     },
 
@@ -113,6 +121,10 @@ export const VendorService = {
     setStatus: async (id: number, status: 'APPROVED' | 'REJECTED' | 'SUSPENDED', reason?: string) => {
         const vendor = await prisma.vendor.findUnique({ where: { id } });
         if (!vendor) throw new ApiError(httpStatus.NOT_FOUND, 'Vendor not found');
+        // A running shop has products and orders, so it is suspended rather than rejected.
+        if (status === 'REJECTED' && vendor.status !== VendorStatus.PENDING) {
+            throw new ApiError(httpStatus.BAD_REQUEST, 'Only a pending application can be rejected');
+        }
 
         return prisma.$transaction(async (tx) => {
             const updated = await tx.vendor.update({
@@ -128,6 +140,12 @@ export const VendorService = {
             } else if (status === 'REJECTED') {
                 await tx.user.update({ where: { id: vendor.userId }, data: { role: Role.USER } });
             }
+            const message = {
+                APPROVED: { title: `${vendor.shopName} is approved`, body: 'You can now add products.', link: '/dashboard/vendor' },
+                REJECTED: { title: `Your application for ${vendor.shopName} was not approved`, body: reason, link: '/dashboard/user/sell' },
+                SUSPENDED: { title: `${vendor.shopName} was suspended`, body: reason, link: '/dashboard/vendor' },
+            }[status];
+            await notify(tx, { userId: vendor.userId, ...message });
             return updated;
         });
     },

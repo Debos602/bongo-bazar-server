@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import prisma from '../../../shared/prisma';
 import { getBalance } from '../payout/payout.service';
 import { VendorService } from '../vendor/vendor.service';
@@ -7,30 +8,51 @@ const LOW_STOCK = 5;
 const countBy = <K extends string>(rows: { _count: unknown; }[], key: K) =>
     Object.fromEntries(rows.map((r: any) => [r[key], r._count])) as Record<string, number>;
 
+const vendorFilter = (vendorId?: number) => (vendorId ? Prisma.sql`AND "vendorId" = ${vendorId}` : Prisma.empty);
+
+// createdAt is stored in UTC; days and months below are Bangladesh days and months.
+const LOCAL_TIME = Prisma.sql`("createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Dhaka')`;
+const LOCAL_NOW = Prisma.sql`(now() AT TIME ZONE 'Asia/Dhaka')`;
+
 // Last 12 months, oldest first, with empty months filled in.
-const fillMonths = (rows: { month: string; revenue: number; orders: number; }[]) => {
+const monthlySales = async (vendorId?: number) => {
+    const rows = await prisma.$queryRaw<{ month: string; revenue: number; orders: number; }[]>`
+        SELECT to_char(date_trunc('month', ${LOCAL_TIME}), 'YYYY-MM') AS month,
+               COALESCE(SUM("total"), 0)::float AS revenue,
+               COUNT(DISTINCT "orderId")::int AS orders
+        FROM "VendorOrder"
+        WHERE "status" <> 'CANCELLED' AND "createdAt" >= now() - interval '13 months' ${vendorFilter(vendorId)}
+        GROUP BY 1`;
     const byMonth = new Map(rows.map((r) => [r.month, r]));
-    const result = [];
-    const now = new Date();
-    for (let i = 11; i >= 0; i--) {
-        const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
-        const month = d.toISOString().slice(0, 7);
+    const local = new Date(Date.now() + 6 * 60 * 60 * 1000);
+    return Array.from({ length: 12 }, (_, i) => {
+        const month = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth() - (11 - i), 1)).toISOString().slice(0, 7);
         const row = byMonth.get(month);
-        result.push({ month, revenue: Number(row?.revenue ?? 0), orders: Number(row?.orders ?? 0) });
-    }
-    return result;
+        return { month, revenue: Number(row?.revenue ?? 0), orders: Number(row?.orders ?? 0) };
+    });
 };
 
-const monthlySales = async (vendorId?: number) => {
-    const filter = vendorId ? `AND "vendorId" = ${Number(vendorId)}` : '';
-    const rows = await prisma.$queryRawUnsafe<{ month: string; revenue: number; orders: number; }[]>(`
-        SELECT to_char(date_trunc('month', "createdAt"), 'YYYY-MM') AS month,
-               COALESCE(SUM("total"), 0)::float AS revenue,
-               COUNT(*)::int AS orders
+// Today and this month. Growth compares this month so far with the same days of last month,
+// so it is not unfairly low early in a month. It is null when there is nothing to compare with.
+const salesPeriods = async (vendorId?: number) => {
+    const [r] = await prisma.$queryRaw<{ today_sales: number; today_orders: number; month_sales: number; month_orders: number; last_sales: number; }[]>`
+        SELECT COALESCE(SUM("total") FILTER (WHERE ${LOCAL_TIME} >= date_trunc('day', ${LOCAL_NOW})), 0)::float AS today_sales,
+               (COUNT(DISTINCT "orderId") FILTER (WHERE ${LOCAL_TIME} >= date_trunc('day', ${LOCAL_NOW})))::int AS today_orders,
+               COALESCE(SUM("total") FILTER (WHERE ${LOCAL_TIME} >= date_trunc('month', ${LOCAL_NOW})), 0)::float AS month_sales,
+               (COUNT(DISTINCT "orderId") FILTER (WHERE ${LOCAL_TIME} >= date_trunc('month', ${LOCAL_NOW})))::int AS month_orders,
+               COALESCE(SUM("total") FILTER (WHERE ${LOCAL_TIME} >= date_trunc('month', ${LOCAL_NOW} - interval '1 month')
+                                               AND ${LOCAL_TIME} < ${LOCAL_NOW} - interval '1 month'), 0)::float AS last_sales
         FROM "VendorOrder"
-        WHERE "status" <> 'CANCELLED' AND "createdAt" >= date_trunc('month', now()) - interval '11 months' ${filter}
-        GROUP BY 1`);
-    return fillMonths(rows);
+        WHERE "status" <> 'CANCELLED' AND "createdAt" >= now() - interval '63 days' ${vendorFilter(vendorId)}`;
+    return {
+        today: { sales: r.today_sales, orders: r.today_orders },
+        thisMonth: {
+            sales: r.month_sales,
+            orders: r.month_orders,
+            averageOrder: r.month_orders ? Math.round((r.month_sales / r.month_orders) * 100) / 100 : 0,
+            growthPct: r.last_sales > 0 ? Math.round(((r.month_sales - r.last_sales) / r.last_sales) * 100) : null,
+        },
+    };
 };
 
 const topProducts = async (vendorId?: number) => {
@@ -50,7 +72,7 @@ const topProducts = async (vendorId?: number) => {
 
 export const DashboardService = {
     admin: async () => {
-        const [users, vendors, orders, productTotal, sales, delivered, pendingPayouts, recentOrders, pendingVendors, monthly, top] = await Promise.all([
+        const [users, vendors, orders, productTotal, sales, delivered, pendingPayouts, recentOrders, pendingVendors, monthly, top, periods] = await Promise.all([
             prisma.user.groupBy({ by: ['role'], _count: true }),
             prisma.vendor.groupBy({ by: ['status'], _count: true }),
             prisma.order.groupBy({ by: ['status'], _count: true }),
@@ -68,9 +90,11 @@ export const DashboardService = {
             }),
             monthlySales(),
             topProducts(),
+            salesPeriods(),
         ]);
         const userCounts = countBy(users, 'role');
         return {
+            periods,
             totals: {
                 users: Object.values(userCounts).reduce((a, b) => a + b, 0),
                 customers: userCounts.USER ?? 0,
@@ -94,7 +118,7 @@ export const DashboardService = {
     vendor: async (userId: number) => {
         const vendor = await VendorService.getByUserId(userId);
         const vendorId = vendor.id;
-        const [products, published, orders, sales, balance, rating, lowStock, recentOrders, monthly, top] = await Promise.all([
+        const [products, published, orders, sales, balance, rating, lowStock, recentOrders, monthly, top, periods] = await Promise.all([
             prisma.product.count({ where: { vendorId } }),
             prisma.product.count({ where: { vendorId, isPublished: true, isBlocked: false } }),
             prisma.vendorOrder.groupBy({ by: ['status'], where: { vendorId }, _count: true }),
@@ -111,9 +135,11 @@ export const DashboardService = {
             }),
             monthlySales(vendorId),
             topProducts(vendorId),
+            salesPeriods(vendorId),
         ]);
         const ordersByStatus = countBy(orders, 'status');
         return {
+            periods,
             shop: { id: vendor.id, shopName: vendor.shopName, slug: vendor.slug, status: vendor.status, commissionRate: vendor.commissionRate },
             totals: {
                 products,

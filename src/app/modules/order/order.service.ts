@@ -6,11 +6,23 @@ import { roundMoney } from '../../../shared/money';
 import prisma from '../../../shared/prisma';
 import ApiError from '../../errors/ApiError';
 import { findUsableCoupon } from '../coupon/coupon.service';
+import { notify } from '../notification/notification.service';
 import { publicProductWhere } from '../product/product.service';
 import { VendorService } from '../vendor/vendor.service';
 
 type Tx = Prisma.TransactionClient;
 type Line = { productId: number; quantity: number; };
+type Actor = 'customer' | 'vendor' | 'admin' | 'system';
+
+// Generous because a sleeping serverless database can take seconds to wake up.
+const TX_OPTIONS = { maxWait: 10000, timeout: 30000 };
+
+const STATUS_TEXT: Partial<Record<OrderStatus, string>> = {
+    PROCESSING: 'is being prepared',
+    SHIPPED: 'has shipped',
+    DELIVERED: 'was delivered',
+    CANCELLED: 'was cancelled',
+};
 
 const customerInclude = {
     items: { include: { product: { include: { vendor: { select: { id: true, shopName: true, slug: true } } } } } },
@@ -135,6 +147,13 @@ const placeOrder = async (
         });
     }
 
+    await notify(tx, parts.map((part) => ({
+        userId: groups.get(part.vendorId)!.vendor.userId,
+        title: `New order #${order.id}`,
+        body: `${part.items.length} ${part.items.length === 1 ? 'product' : 'products'}, ৳ ${part.total}`,
+        link: '/dashboard/vendor/orders',
+    })));
+
     return tx.order.findUniqueOrThrow({ where: { id: order.id }, include: customerInclude });
 };
 
@@ -149,7 +168,13 @@ const rollUp = async (tx: Tx, orderId: number) => {
     else if (active.some((s) => s === 'SHIPPED' || s === 'DELIVERED')) status = 'SHIPPED';
     else if (active.includes('PROCESSING')) status = 'PROCESSING';
 
+    const before = await tx.order.findUniqueOrThrow({ where: { id: orderId }, select: { status: true, couponCode: true } });
     await tx.order.update({ where: { id: orderId }, data: { status } });
+
+    // A fully cancelled order gives its coupon use back.
+    if (status === 'CANCELLED' && before.status !== 'CANCELLED' && before.couponCode) {
+        await tx.coupon.updateMany({ where: { code: before.couponCode, usedCount: { gt: 0 } }, data: { usedCount: { decrement: 1 } } });
+    }
 
     const payment = await tx.payment.findUnique({ where: { orderId } });
     if (!payment) return;
@@ -160,10 +185,10 @@ const rollUp = async (tx: Tx, orderId: number) => {
     }
 };
 
-const changePartStatus = async (tx: Tx, vendorOrderId: number, next: OrderStatus, trackingNumber?: string) => {
+const changePartStatus = async (tx: Tx, vendorOrderId: number, next: OrderStatus, by: Actor, trackingNumber?: string) => {
     const part = await tx.vendorOrder.findUnique({
         where: { id: vendorOrderId },
-        include: { items: true, order: { include: { payment: true } } },
+        include: { items: true, order: { include: { payment: true } }, vendor: { select: { userId: true, shopName: true } } },
     });
     if (!part) throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
 
@@ -185,6 +210,23 @@ const changePartStatus = async (tx: Tx, vendorOrderId: number, next: OrderStatus
         data: { status: next, ...(trackingNumber !== undefined ? { trackingNumber } : {}) },
     });
     await rollUp(tx, part.orderId);
+
+    if (by !== 'customer') {
+        await notify(tx, {
+            userId: part.order.userId,
+            title: `Order #${part.orderId} ${STATUS_TEXT[next]}`,
+            body: `From ${part.vendor.shopName}${trackingNumber ? `. Tracking number ${trackingNumber}` : ''}`,
+            link: '/dashboard/user/orders',
+        });
+    }
+    if (by !== 'vendor') {
+        await notify(tx, {
+            userId: part.vendor.userId,
+            title: `Order #${part.orderId} ${STATUS_TEXT[next]}`,
+            body: by === 'customer' ? 'Cancelled by the customer' : by === 'admin' ? 'Changed by an admin' : 'Payment was not completed in time',
+            link: '/dashboard/vendor/orders',
+        });
+    }
 
     // Tells the caller what to refund once the transaction has committed.
     const refund = next === 'CANCELLED' && payment?.status === PaymentStatus.PAID && payment.method === PaymentMethod.STRIPE && part.total > 0
@@ -225,17 +267,17 @@ const issueRefunds = async (refunds: Refund[]) => {
     }
 };
 
-const cancelParts = async (orderId: number, statuses: OrderStatus[]) => {
+const cancelParts = async (orderId: number, statuses: OrderStatus[], by: Actor) => {
     const refunds = await prisma.$transaction(async (tx) => {
         const parts = await tx.vendorOrder.findMany({ where: { orderId, status: { in: statuses } } });
         if (!parts.length) throw new ApiError(httpStatus.BAD_REQUEST, 'This order can no longer be cancelled');
         const collected: Refund[] = [];
         for (const part of parts) {
-            const refund = await changePartStatus(tx, part.id, 'CANCELLED');
+            const refund = await changePartStatus(tx, part.id, 'CANCELLED', by);
             if (refund) collected.push(refund);
         }
         return collected;
-    });
+    }, TX_OPTIONS);
     await issueRefunds(refunds);
 };
 
@@ -264,7 +306,7 @@ export const OrderService = {
         );
         await tx.cart.deleteMany({ where: { userId } });
         return order;
-    }, { maxWait: 10000, timeout: 30000 }),
+    }, TX_OPTIONS),
 
     createDirect: async (
         userId: number, addressId: number, productId: number, quantity: number,
@@ -273,7 +315,7 @@ export const OrderService = {
         const address = await tx.address.findFirst({ where: { id: addressId, userId } });
         if (!address) throw new ApiError(httpStatus.NOT_FOUND, 'Address not found');
         return placeOrder(tx, userId, addressId, [{ productId, quantity }], couponCode, paymentMethod);
-    }, { maxWait: 10000, timeout: 30000 }),
+    }, TX_OPTIONS),
 
     list: async (userId: number) => prisma.order.findMany({
         where: { userId },
@@ -291,7 +333,7 @@ export const OrderService = {
     cancelMine: async (id: number, userId: number) => {
         const order = await prisma.order.findFirst({ where: { id, userId } });
         if (!order) throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
-        await cancelParts(id, ['PENDING']);
+        await cancelParts(id, ['PENDING'], 'customer');
         return prisma.order.findUniqueOrThrow({ where: { id }, include: customerInclude });
     },
 
@@ -311,7 +353,7 @@ export const OrderService = {
         const vendor = await VendorService.getApprovedByUserId(userId);
         const part = await prisma.vendorOrder.findFirst({ where: { id, vendorId: vendor.id } });
         if (!part) throw new ApiError(httpStatus.NOT_FOUND, 'Order not found');
-        const refund = await prisma.$transaction((tx) => changePartStatus(tx, id, status, trackingNumber));
+        const refund = await prisma.$transaction((tx) => changePartStatus(tx, id, status, 'vendor', trackingNumber), TX_OPTIONS);
         if (refund) await issueRefunds([refund]);
         return prisma.vendorOrder.findUniqueOrThrow({ where: { id }, include: vendorOrderInclude });
     },
@@ -347,18 +389,18 @@ export const OrderService = {
             if (!movable.length) throw new ApiError(httpStatus.BAD_REQUEST, `No part of this order can change to ${status}`);
             const collected: Refund[] = [];
             for (const part of movable) {
-                const refund = await changePartStatus(tx, part.id, status);
+                const refund = await changePartStatus(tx, part.id, status, 'admin');
                 if (refund) collected.push(refund);
             }
             return collected;
-        });
+        }, TX_OPTIONS);
         await issueRefunds(refunds);
         return OrderService.adminGetOne(id);
     },
 
     // Internal: called when an unpaid Stripe session expires.
     cancelUnpaid: async (orderId: number) => {
-        await cancelParts(orderId, ['PENDING', 'PROCESSING']);
+        await cancelParts(orderId, ['PENDING', 'PROCESSING'], 'system');
     },
 
     remove: async (id: number) => {
@@ -370,6 +412,6 @@ export const OrderService = {
             await tx.vendorOrder.deleteMany({ where: { orderId: id } });
             await tx.payment.deleteMany({ where: { orderId: id } });
             await tx.order.delete({ where: { id } });
-        });
+        }, TX_OPTIONS);
     },
 };
